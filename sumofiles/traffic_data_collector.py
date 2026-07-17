@@ -171,9 +171,44 @@ import traci
 # CARS_ABC = "800total_1000s_unbalanced"
 
 #8thhhhhhh
-DURATION_XYZ = "45s"
-CARS_ABC = "800total_1000s_unbalanced" 
+# DURATION_XYZ = "45s"
+# CARS_ABC = "800total_1000s_unbalanced" 
 
+#-----------------------------------------------------------
+# number of cars changes (number of cars 1200)
+
+#1sttttttttttt
+# DURATION_XYZ = "10s"
+# CARS_ABC = "1200total_1000s"
+
+#2ndddddddddddd
+# DURATION_XYZ = "20s"
+# CARS_ABC = "1200total_1000s" 
+
+#3rddddddddddd
+# DURATION_XYZ = "30s"
+# CARS_ABC = "1200total_1000s" 
+
+#4thhhh
+# DURATION_XYZ = "45s"
+# CARS_ABC = "1200total_1000s"
+
+#hold ur horsessssssssssssssss
+#5thhhhhh
+# DURATION_XYZ = "10s"
+# CARS_ABC = "1200total_1000s_unbalanced"
+
+#6thhhhh
+# DURATION_XYZ = "20s"
+# CARS_ABC = "1200total_1000s_unbalanced"
+
+#7thhhhhhhhh
+# DURATION_XYZ = "30s"
+# CARS_ABC = "1200total_1000s_unbalanced"
+
+#8thhhhhhh
+DURATION_XYZ = "45s"
+CARS_ABC = "1200total_1000s_unbalanced" 
 
 
 

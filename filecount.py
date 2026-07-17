@@ -10,11 +10,11 @@ if os.path.exists(data_folder):
     total_files = len(files)
     
     print("\n--- DATA FOLDER CHECK ---")
-    print(f"Total CSV files found: {total_files} / 32")
+    print(f"Total CSV files found: {total_files} / 40")
     print("-------------------------\n")
     
-    if total_files == 32:
-        print("🎉 Perfect! All 32 combination data tracks are safely generated.")
+    if total_files == 40:
+        print("🎉 Perfect! All 40 combination data tracks are safely generated.")
     else:
         print("⚠️ Missing some combinations. Double-check your roadmap list!")
 else:
