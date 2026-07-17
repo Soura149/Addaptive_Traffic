@@ -35,12 +35,12 @@ import traci
 
 # 1sttttttttttttttt
 # Step 4: Define Current Configuration Variables (For automatic CSV naming)
-# DURATION_XYZ = "20s"             # The traffic light phase duration you are testing
-# CARS_ABC = "200total_1000s"      # Explicitly tracks that it is capped at 200 cars over 1000s
-
-#2ndddddddddddd
 # DURATION_XYZ = "10s"
 # CARS_ABC = "200total_1000s" 
+
+#2ndddddddddddd
+# DURATION_XYZ = "20s"             # The traffic light phase duration you are testing
+# CARS_ABC = "200total_1000s"      # Explicitly tracks that it is capped at 200 cars over 1000s
 
 #3rddddddddddd
 # DURATION_XYZ = "30s"
@@ -49,6 +49,8 @@ import traci
 #4thhhh
 # DURATION_XYZ = "45s"
 # CARS_ABC = "200total_1000s"
+
+#hold ur horsesssssssssssssssss
 
 #5thhhhhh
 # DURATION_XYZ = "10s"
@@ -185,9 +187,12 @@ CARS_ABC = "800total_1000s_unbalanced"
 
 
 # Step 5: Define SUMO configuration configuration
+# Make the path absolute so the script can be run from outside the sumofiles folder
+sumo_cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Traci.sumocfg')
+
 Sumo_config = [
     'sumo-gui',            # Use 'sumo' instead of 'sumo-gui' to run without the UI for faster data collection
-    '-c', 'Traci.sumocfg', # Path to your SUMO configuration file
+    '-c', sumo_cfg_path,   # Path to your SUMO configuration file
     '--step-length', '1.0' # 1-second step size makes calculating time-dependent metrics straightforward
 ]
 
@@ -202,7 +207,7 @@ csv_filename = os.path.join(output_folder, f"metrics_dur_{DURATION_XYZ}_cars_{CA
 # Step 7: Open CSV File and Write the Headers
 csv_file = open(csv_filename, mode='w', newline='')
 csv_writer = csv.writer(csv_file)
-csv_writer.writerow(['Step', 'Queue_West_East', 'Queue_North_South', 'Queue_SD', 'Throughput_Step', 'Avg_Waiting_Time'])
+csv_writer.writerow(['Step', 'Queue_West_East', 'Queue_North_South', 'Queue_SD', 'Arrival_West_East', 'Arrival_North_South', 'Throughput_Step', 'Avg_Waiting_Time_West_East', 'Avg_Waiting_Time_North_South'])
 
 # Step 8: Define Environmental Constants (Updated with discovered lane IDs)
 LANE_WEST_EAST = "E0_0"      # Update this if E0_0 is your West-to-East lane
@@ -210,6 +215,32 @@ LANE_NORTH_SOUTH = "E1_0"    # Update this if E1_0 is your North-to-South lane
 
 # Step 9: Open connection between SUMO and TraCI
 traci.start(Sumo_config)
+
+# Apply dynamic traffic light duration based on DURATION_XYZ
+try:
+    duration_val = int(DURATION_XYZ.replace("s", ""))
+    
+    # Get current logic for J2
+    logics = traci.trafficlight.getAllProgramLogics("J2")
+    logic = logics[0]
+    
+    # Modify green phase durations (index 0 and 2)
+    logic.phases[0].duration = duration_val
+    logic.phases[2].duration = duration_val
+    
+    # Set the updated program back to the traffic light
+    traci.trafficlight.setProgramLogic("J2", logic)
+    
+    print("\n--- VALIDATION: SIGNAL TIMING ---")
+    print("Traffic light: J2")
+    print(f"WE Green: {duration_val} seconds")
+    print(f"WE Yellow: 3 seconds")
+    print(f"NS Green: {duration_val} seconds")
+    print(f"NS Yellow: 3 seconds")
+    print(f"Expected cycle: {duration_val * 2 + 6} seconds")
+    print("---------------------------------\n")
+except Exception as e:
+    print(f"Error applying traffic light duration: {e}")
 
 # --- ADD THESE THREE LINES TEMPORARILY TO FIND YOUR IDS ---
 # print("\n--- DETECTED LANES IN YOUR NETWORK ---")
@@ -240,21 +271,52 @@ while traci.simulation.getMinExpectedNumber() > 0:
     # Arrived vehicle IDs are collected from the simulation layer at the exact frame they exit
     arrived_this_step = traci.simulation.getArrivedNumber()
     
-    # --- 4. Calculate Average Waiting Time ---
-    # getWaitingTime returns the total accumulated time spent halting for all vehicles on a lane
+    # Extract Directional Arrival Counts
+    departed_ids = traci.simulation.getDepartedIDList()
+    arrival_we = 0
+    arrival_ns = 0
+    
+    for vid in departed_ids:
+        # getRoute returns a tuple of edges this vehicle will traverse
+        route = traci.vehicle.getRoute(vid)
+        if len(route) > 0:
+            start_edge = route[0]
+            # E0 is the incoming edge for West-East
+            if start_edge == "E0":
+                arrival_we += 1
+            # E1 is the incoming edge for North-South
+            elif start_edge == "E1":
+                arrival_ns += 1
+                
+    # --- 4. Calculate Directional Average Waiting Time ---
     wait_time_we = traci.lane.getWaitingTime(LANE_WEST_EAST)
     wait_time_ns = traci.lane.getWaitingTime(LANE_NORTH_SOUTH)
     
-    # Count total active vehicles currently on both lanes to find an accurate average
-    active_vehicles = traci.lane.getLastStepVehicleNumber(LANE_WEST_EAST) + traci.lane.getLastStepVehicleNumber(LANE_NORTH_SOUTH)
+    active_vehicles_we = traci.lane.getLastStepVehicleNumber(LANE_WEST_EAST)
+    active_vehicles_ns = traci.lane.getLastStepVehicleNumber(LANE_NORTH_SOUTH)
     
-    if active_vehicles > 0:
-        avg_waiting_time = (wait_time_we + wait_time_ns) / active_vehicles
+    if active_vehicles_we > 0:
+        avg_waiting_time_we = wait_time_we / active_vehicles_we
     else:
-        avg_waiting_time = 0.0 # Avoid division by zero when the intersection is clear
+        avg_waiting_time_we = 0.0
+        
+    if active_vehicles_ns > 0:
+        avg_waiting_time_ns = wait_time_ns / active_vehicles_ns
+    else:
+        avg_waiting_time_ns = 0.0
 
     # --- 5. Save Collected Metrics to CSV Row ---
-    csv_writer.writerow([step_count, q_we, q_ns, round(q_sd, 4), arrived_this_step, round(avg_waiting_time, 2)])
+    csv_writer.writerow([
+        step_count, 
+        q_we, 
+        q_ns, 
+        round(q_sd, 4), 
+        arrival_we, 
+        arrival_ns, 
+        arrived_this_step, 
+        round(avg_waiting_time_we, 2), 
+        round(avg_waiting_time_ns, 2)
+    ])
 
 # Step 12: Clean up files and disconnect cleanly
 csv_file.close() # Saves and closes the CSV structure safely
