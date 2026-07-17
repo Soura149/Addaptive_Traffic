@@ -1,0 +1,5 @@
+experiment_name,we_vehicles,ns_vehicles,total_vehicles,throughput,avg_waiting_time,avg_queue,we_waiting_time,ns_waiting_time,we_queue,ns_queue,starvation_events,total_reward
+Original,900,300,1200,931,7.04,6.96,7.0,0.04,6.86,0.09,0,-13.28
+Balanced,600,600,1200,1180,7.02,6.92,6.94,0.09,6.7,0.22,0,-11.99
+WE-Heavy,1000,200,1200,836,6.96,6.92,6.95,0.01,6.89,0.03,0,-13.28
+NS-Heavy,300,900,1200,927,3.21,3.23,3.13,0.08,3.03,0.2,0,-5.56

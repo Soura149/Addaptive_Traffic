@@ -51,8 +51,11 @@
     <flow id="flow_north_south" type="car" from="E1" to="E2" begin="0.00" end="1000.00" number="400" departLane="0"/> -->
 
     <!-- 8thhhhhhhhhhhhhhhhhhhhhhhhh -->
-    <flow id="flow_west_east" type="car" from="E0" to="E0.58" begin="0.00" end="1000.00" number="600" departLane="0"/>
-    <flow id="flow_north_south" type="car" from="E1" to="E2" begin="0.00" end="1000.00" number="200" departLane="0"/>
+    <!-- <flow id="flow_west_east" type="car" from="E0" to="E0.58" begin="0.00" end="1000.00" number="600" departLane="0"/> -->
+    <!-- <flow id="flow_north_south" type="car" from="E1" to="E2" begin="0.00" end="1000.00" number="200" departLane="0"/> -->
 
+    <!-- 1200-Vehicle Main Experiment -->
+    <flow id="flow_west_east" type="car" from="E0" to="E0.58" begin="0.00" end="1000.00" number="900" departLane="0"/>
+    <flow id="flow_north_south" type="car" from="E1" to="E2" begin="0.00" end="1000.00" number="300" departLane="0"/>
 
 </routes>

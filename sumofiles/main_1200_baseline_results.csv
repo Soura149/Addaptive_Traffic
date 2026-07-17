@@ -1,0 +1,5 @@
+duration,total_throughput,avg_waiting_time,avg_queue,starvation_events
+10,931,7.04,6.96,0
+20,1076,16.34,7.01,0
+30,1112,26.16,7.0,0
+45,1133,41.42,7.0,0

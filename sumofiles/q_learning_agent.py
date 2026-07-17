@@ -370,7 +370,7 @@ def run_training(episodes, config_file=None):
     agent = QLearningAgent()
     
     # Open CSV file and write the precise header row
-    log_file = open("intended_decision_log.csv", "w", newline="")
+    log_file = open("main_1200_decision_log.csv", "w", newline="")
     csv_writer = csv.writer(log_file)
     csv_writer.writerow([
         "episode", "decision", "simulation_time", "state", "action", "next_state",
@@ -383,7 +383,7 @@ def run_training(episodes, config_file=None):
         "q_value_before", "q_value_after", "epsilon", "transition_duration"
     ])
     
-    summary_file = open("intended_training_episode_summary.csv", "w", newline="")
+    summary_file = open("main_1200_training_episode_summary.csv", "w", newline="")
     summary_writer = csv.writer(summary_file)
     summary_writer.writerow([
         "episode", "total_reward", "average_reward", "average_waiting_time", "average_queue",
@@ -401,6 +401,10 @@ def run_training(episodes, config_file=None):
         decision = 0
         ep_total_wait = 0
         ep_total_queue = 0
+        ep_we_wait = 0
+        ep_ns_wait = 0
+        ep_we_queue = 0
+        ep_ns_queue = 0
         ep_starvation_events = 0
         ep_actions = {a: 0 for a in ACTIONS}
         
@@ -425,12 +429,17 @@ def run_training(episodes, config_file=None):
             q_before, q_after = agent.update_q_value(state, action, res['reward'], next_state)
             
             sim_time = traci.simulation.getTime()
-            log_decision(csv_writer, ep, decision, sim_time, state, action, next_state, res, q_before, q_after, agent.epsilon)
+            if not is_sensitivity:
+                log_decision(csv_writer, ep, decision, sim_time, state, action, next_state, res, q_before, q_after, agent.epsilon)
             
             ep_reward += res['reward']
             decision += 1
             ep_total_wait += res['new_total_wait']
             ep_total_queue += res['new_total_queue']
+            ep_we_wait += new_metrics['wt_we']
+            ep_ns_wait += new_metrics['wt_ns']
+            ep_we_queue += new_metrics['q_we']
+            ep_ns_queue += new_metrics['q_ns']
             if new_metrics['wt_we'] > STARVATION_THRESHOLD or new_metrics['wt_ns'] > STARVATION_THRESHOLD:
                 ep_starvation_events += 1
             ep_actions[action] += 1
@@ -470,42 +479,45 @@ def run_training(episodes, config_file=None):
     summary_file.close()
     
     print("\n--- FINAL LEARNED POLICY ---")
-    with open("intended_q_table.json", "w") as f:
+    with open("main_1200_q_table.json", "w") as f:
         json.dump(agent.q_table, f, indent=4)
         
     for state, actions in agent.q_table.items():
         best_action = max(actions, key=actions.get)
         print(f"{state} -> {best_action} seconds")
     
-    print("\nTraining completed. Q-table saved to 'intended_q_table.json' and logs to 'intended_decision_log.csv'.")
+    print("\nTraining completed. Q-table saved to 'main_1200_q_table.json' and logs to 'main_1200_decision_log.csv'.")
 
 
-def run_evaluation(episodes, config_file=None):
+def run_evaluation(episodes, config_file=None, is_sensitivity=False):
     print(f"--- RUNNING EVALUATION FOR {episodes} EPISODES ---")
     env = TrafficEnvironment(ui=False, config_file=config_file)
     agent = QLearningAgent()
     
     agent.epsilon = 0.0
     try:
-        with open("intended_q_table.json", "r") as f:
+        with open("main_1200_q_table.json", "r") as f:
             raw_q_table = json.load(f)
             agent.q_table = {s: {int(a): v for a, v in actions.items()} for s, actions in raw_q_table.items()}
-        print("Successfully loaded intended_q_table.json")
+        print("Successfully loaded main_1200_q_table.json")
     except FileNotFoundError:
-        print("Warning: intended_q_table.json not found. Evaluating with empty Q-table.")
+        print("Warning: main_1200_q_table.json not found. Evaluating with empty Q-table.")
         
-    log_file = open("intended_evaluation_log.csv", "w", newline="")
-    csv_writer = csv.writer(log_file)
-    csv_writer.writerow([
-        "episode", "decision", "simulation_time", "state", "action", "next_state",
-        "we_waiting_time", "ns_waiting_time", "total_waiting_time",
-        "we_queue", "ns_queue", "total_queue",
-        "throughput_during_transition", "throughput_rate",
-        "normalized_wait", "normalized_queue", "normalized_throughput",
-        "wait_contribution", "queue_contribution", "throughput_contribution",
-        "starvation_penalty", "reward",
-        "q_value_before", "q_value_after", "epsilon", "transition_duration"
-    ])
+    if not is_sensitivity:
+        log_file = open("main_1200_evaluation_log.csv", "w", newline="")
+        csv_writer = csv.writer(log_file)
+        csv_writer.writerow([
+            "episode", "decision", "simulation_time", "state", "action", "next_state",
+            "we_waiting_time", "ns_waiting_time", "total_waiting_time",
+            "we_queue", "ns_queue", "total_queue",
+            "throughput_during_transition", "throughput_rate",
+            "normalized_wait", "normalized_queue", "normalized_throughput",
+            "wait_contribution", "queue_contribution", "throughput_contribution",
+            "starvation_penalty", "reward",
+            "q_value_before", "q_value_after", "epsilon", "transition_duration"
+        ])
+    else:
+        csv_writer = None
     
     MAX_SIM_TIME = 3600
     for ep in range(1, episodes + 1):
@@ -515,6 +527,10 @@ def run_evaluation(episodes, config_file=None):
         decision = 0
         ep_total_wait = 0
         ep_total_queue = 0
+        ep_we_wait = 0
+        ep_ns_wait = 0
+        ep_we_queue = 0
+        ep_ns_queue = 0
         ep_starvation_events = 0
         ep_actions = {a: 0 for a in ACTIONS}
         
@@ -540,12 +556,17 @@ def run_evaluation(episodes, config_file=None):
             q_after = q_before 
             
             sim_time = traci.simulation.getTime()
-            log_decision(csv_writer, ep, decision, sim_time, state, action, next_state, res, q_before, q_after, agent.epsilon)
+            if not is_sensitivity:
+                log_decision(csv_writer, ep, decision, sim_time, state, action, next_state, res, q_before, q_after, agent.epsilon)
             
             ep_reward += res['reward']
             decision += 1
             ep_total_wait += res['new_total_wait']
             ep_total_queue += res['new_total_queue']
+            ep_we_wait += new_metrics['wt_we']
+            ep_ns_wait += new_metrics['wt_ns']
+            ep_we_queue += new_metrics['q_we']
+            ep_ns_queue += new_metrics['q_ns']
             if new_metrics['wt_we'] > STARVATION_THRESHOLD or new_metrics['wt_ns'] > STARVATION_THRESHOLD:
                 ep_starvation_events += 1
             ep_actions[action] += 1
@@ -568,8 +589,22 @@ def run_evaluation(episodes, config_file=None):
         print(f"Starvation Events: {ep_starvation_events}")
         print(f"Actions Selected:  {ep_actions}\n")
         
-    log_file.close() 
-    print("\nEvaluation completed. Logs saved to 'intended_evaluation_log.csv'.")
+        if is_sensitivity:
+            return {
+                "throughput": total_throughput,
+                "avg_wait": avg_wait,
+                "avg_queue": avg_queue,
+                "we_wait": ep_we_wait / decision if decision > 0 else 0,
+                "ns_wait": ep_ns_wait / decision if decision > 0 else 0,
+                "we_queue": ep_we_queue / decision if decision > 0 else 0,
+                "ns_queue": ep_ns_queue / decision if decision > 0 else 0,
+                "starvation": ep_starvation_events,
+                "reward": ep_reward
+            }
+        
+    if not is_sensitivity:
+        log_file.close() 
+        print("\nEvaluation completed. Logs saved to 'main_1200_evaluation_log.csv'.")
 
 
 # Step 10: Define Baseline Evaluation
@@ -613,9 +648,9 @@ def run_baseline(fixed_duration, config_file=None):
     print(f"  Avg Total Queue per Cycle: {avg_queue:.2f}")
     print(f"  Starvation Events: {starvation_events}")
     
-    # Write to intended_baseline_results.csv
-    file_exists = os.path.isfile("intended_baseline_results.csv")
-    with open("intended_baseline_results.csv", "a", newline="") as bf:
+    # Write to main_1200_baseline_results.csv
+    file_exists = os.path.isfile("main_1200_baseline_results.csv")
+    with open("main_1200_baseline_results.csv", "a", newline="") as bf:
         writer = csv.writer(bf)
         if not file_exists:
             writer.writerow(["duration", "total_throughput", "avg_waiting_time", "avg_queue", "starvation_events"])
@@ -623,6 +658,59 @@ def run_baseline(fixed_duration, config_file=None):
         
     return total_throughput, avg_waiting_time
 
+
+def run_sensitivity_experiment():
+    print("\n--- RUNNING TRAFFIC-CONDITION SENSITIVITY EXPERIMENT ---")
+    conditions = [
+        {"name": "Original", "we": 900, "ns": 300},
+        {"name": "Balanced", "we": 600, "ns": 600},
+        {"name": "WE-Heavy", "we": 1000, "ns": 200},
+        {"name": "NS-Heavy", "we": 300, "ns": 900}
+    ]
+    
+    out_file = "traffic_condition_experiments.csv"
+    with open(out_file, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["experiment_name", "we_vehicles", "ns_vehicles", "total_vehicles", 
+                         "throughput", "avg_waiting_time", "avg_queue", 
+                         "we_waiting_time", "ns_waiting_time", "we_queue", "ns_queue", 
+                         "starvation_events", "total_reward"])
+        
+        for cond in conditions:
+            print(f"\nEvaluating Condition: {cond['name']} (WE:{cond['we']} NS:{cond['ns']})")
+            
+            route_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="car" maxSpeed="13.89" length="4.7"/>
+    <flow id="flow_west_east" type="car" from="E0" to="E0.58" begin="0.00" end="1000.00" number="{cond['we']}" departLane="0"/>
+    <flow id="flow_north_south" type="car" from="E1" to="E2" begin="0.00" end="1000.00" number="{cond['ns']}" departLane="0"/>
+</routes>"""
+            with open("Sensitivity.rou.xml", "w") as rf:
+                rf.write(route_content)
+                
+            cfg_content = """<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <input>
+        <net-file value="Traci.net.xml"/>
+        <route-files value="Sensitivity.rou.xml"/>
+    </input>
+</configuration>"""
+            with open("Sensitivity.sumocfg", "w") as cf:
+                cf.write(cfg_content)
+                
+            res = run_evaluation(1, config_file="Sensitivity.sumocfg", is_sensitivity=True)
+            
+            total_veh = cond['we'] + cond['ns']
+            writer.writerow([
+                cond['name'], cond['we'], cond['ns'], total_veh,
+                res['throughput'], round(res['avg_wait'], 2), round(res['avg_queue'], 2),
+                round(res['we_wait'], 2), round(res['ns_wait'], 2), 
+                round(res['we_queue'], 2), round(res['ns_queue'], 2),
+                res['starvation'], round(res['reward'], 2)
+            ])
+            print(f"Done -> Throughput: {res['throughput']} | Wait: {res['avg_wait']:.2f}")
+
+    print(f"\nExperiment complete. Results saved to {out_file}")
 
 # Step 11: Main Execution Block
 if __name__ == "__main__":
@@ -632,6 +720,7 @@ if __name__ == "__main__":
     parser.add_argument('--train', type=int, help="Run full training for N episodes")
     parser.add_argument('--evaluate', type=int, help="Run evaluation for N episodes using saved Q-table")
     parser.add_argument('--baseline', action='store_true', help="Run fixed duration baselines")
+    parser.add_argument('--sensitivity', action='store_true', help="Run traffic condition sensitivity experiment")
     parser.add_argument('--config', type=str, default=None, help="Path to the SUMO config file (.sumocfg)")
     
     args = parser.parse_args()
@@ -642,7 +731,12 @@ if __name__ == "__main__":
         run_training(args.train, args.config)
     elif args.evaluate:
         run_evaluation(args.evaluate, args.config)
+    elif args.sensitivity:
+        run_sensitivity_experiment()
     elif args.baseline:
+        baseline_file = "main_1200_baseline_results.csv"
+        if os.path.exists(baseline_file):
+            os.remove(baseline_file)
         for dur in [10, 20, 30, 45]:
             run_baseline(dur, args.config)
     else:
