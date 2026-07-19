@@ -9,8 +9,11 @@ import traci
 ALPHA = 0.1
 GAMMA = 0.99
 EPSILON = 1.0
-EPSILON_MIN = 0.01
-EPSILON_DECAY = 0.995
+EPSILON_MIN = 0.05
+EPSILON_DECAY = 0.94
+
+DATA_DIR = os.path.join(os.path.dirname(__file__), "new_experiment_analytics")
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # 2. Asymmetric Action Space
 # Explicit combination mapping independent Green times for West-East (WE) and North-South (NS)
@@ -27,11 +30,15 @@ ACTION_SPACE = [
 
 def clear_contamination():
     """1. Contamination Reset: Programmatically delete old instances to ensure clean run."""
-    files_to_remove = ["q_table.json", "decision_log.csv", "training_episode_summary.csv"]
+    files_to_remove = [
+        os.path.join(DATA_DIR, "q_table.json"), 
+        os.path.join(DATA_DIR, "decision_log.csv"), 
+        os.path.join(DATA_DIR, "training_episode_summary.csv")
+    ]
     for f in files_to_remove:
         if os.path.exists(f):
             os.remove(f)
-            print(f"Removed old {f}")
+            print(f"Removed old {os.path.basename(f)}")
 
 def get_live_metrics():
     """Extract real-time metrics using TraCI."""
@@ -91,7 +98,9 @@ def execute_action(action_index):
     transition_duration = we_green + ns_green + 2 * yellow_duration
     return total_completed, transition_duration
 
-def run_episode(episode, q_table, epsilon=1.0, learning=True, log_file="decision_log.csv"):
+def run_episode(episode, q_table, epsilon=1.0, learning=True, log_file=None):
+    if log_file is None:
+        log_file = os.path.join(DATA_DIR, "decision_log.csv")
     # Start SUMO
     traci.start(["sumo", "-c", "Traci.sumocfg", "--no-step-log", "true"])
     
@@ -102,7 +111,7 @@ def run_episode(episode, q_table, epsilon=1.0, learning=True, log_file="decision
         if not decision_log_exists:
             # 5. Robust Logging Columns
             writer.writerow(["episode", "timestamp", "state", "action", "we_green", "ns_green", 
-                             "we_waiting_time", "ns_waiting_time", "we_queue", "ns_queue", "reward"])
+                             "we_waiting_time", "ns_waiting_time", "we_queue", "ns_queue", "completed_vehicles", "reward"])
             
         step = 0
         total_reward = 0
@@ -153,19 +162,19 @@ def run_episode(episode, q_table, epsilon=1.0, learning=True, log_file="decision
             # Log transition
             timestamp = traci.simulation.getTime()
             writer.writerow([episode, timestamp, state, action, we_green, ns_green, 
-                             we_wait_sum, ns_wait_sum, we_queue, ns_queue, reward])
+                             we_wait_sum, ns_wait_sum, we_queue, ns_queue, completed_vehicles, reward])
             
             state = next_state
             total_reward += reward
             step += 1
             
-            if step >= 100: # Limit steps per episode for safety during tests
+            if step >= 1000: # Limit steps per episode for safety during tests
                 break
 
     traci.close()
     
     # Save Q-table
-    with open("q_table.json", "w") as f:
+    with open(os.path.join(DATA_DIR, "q_table.json"), "w") as f:
         json.dump(q_table, f, indent=4)
         
     return total_reward
@@ -174,9 +183,9 @@ if __name__ == "__main__":
     clear_contamination()
     
     q_table = {}
-    episodes = 5
+    episodes = 60
     
-    with open("training_episode_summary.csv", "w", newline='') as f:
+    with open(os.path.join(DATA_DIR, "training_episode_summary.csv"), "w", newline='') as f:
         writer = csv.writer(f)
         writer.writerow(["episode", "total_reward", "epsilon"])
         
@@ -184,7 +193,7 @@ if __name__ == "__main__":
         total_r = run_episode(ep, q_table)
         print(f"Episode {ep} finished. Total Reward: {total_r:.2f}, Epsilon: {EPSILON:.3f}")
         
-        with open("training_episode_summary.csv", "a", newline='') as f:
+        with open(os.path.join(DATA_DIR, "training_episode_summary.csv"), "a", newline='') as f:
             writer = csv.writer(f)
             writer.writerow([ep, total_r, EPSILON])
             

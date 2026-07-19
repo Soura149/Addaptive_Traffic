@@ -59,7 +59,7 @@ def get_state(we_max_wait, ns_max_wait, we_queue, ns_queue):
 def run_live_demonstration(num_vehicles=1200):
     # Set proper environment infrastructure paths
     sumo_cfg = "src/Traci.sumocfg"
-    q_table_file = "sumofiles/q_table.json"
+    q_table_file = "src/new_experiment_analytics/q_table.json"
     
     if not os.path.exists(sumo_cfg):
         sumo_cfg = "sumofiles/Traci.sumocfg"

@@ -1,0 +1,11 @@
+Scenario_Name,Type,Traffic_Volume,Avg_Waiting_Time,Max_Queue,Cumulative_Throughput
+10s Fixed Baseline,Fixed Baseline,1200,24.654822335025383,7,1200
+20s Fixed Baseline,Fixed Baseline,1200,56.21978021978022,7,1200
+30s Fixed Baseline,Fixed Baseline,1200,89.8688524590164,7,1200
+45s Fixed Baseline,Fixed Baseline,1200,149.0340909090909,7,1200
+Frozen Agent (200v Unbalanced),RL Agent,200,5.869565217391305,5,200
+Frozen Agent (400v Unbalanced),RL Agent,400,14.72,7,400
+Frozen Agent (800v Unbalanced),RL Agent,800,20.045454545454547,7,800
+Frozen Agent (200v Balanced),RL Agent,200,3.9375,2,200
+Frozen Agent (400v Balanced),RL Agent,400,4.222222222222222,5,400
+Frozen Agent (800v Balanced),RL Agent,800,7.162790697674419,7,800

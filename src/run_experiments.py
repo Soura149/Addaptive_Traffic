@@ -2,7 +2,7 @@ import os
 import csv
 import traci
 from route_generator import generate_routes as generate_dynamic_route
-from q_learning_agent import run_episode, clear_contamination, get_live_metrics
+from q_learning_agent import run_episode, clear_contamination, get_live_metrics, DATA_DIR
 
 def run_fixed_time_baseline(duration, seed, output_file):
     print(f"Starting Fixed Baseline: {duration}s with seed {seed}")
@@ -50,7 +50,7 @@ def run_fixed_time_baseline(duration, seed, output_file):
             total_completed += completed_in_cycle
             step += 1
             
-            if step > 200: # Safety break just in case of deadlock
+            if step >= 1000: # Safety break just in case of deadlock
                 print(f"Safety break triggered for {duration}s baseline.")
                 break
 
@@ -62,29 +62,30 @@ def main():
     clear_contamination()
     
     # Also clean evaluation log if it exists from previous runs
-    if os.path.exists("evaluation_log.csv"):
-        os.remove("evaluation_log.csv")
+    eval_log_path = os.path.join(DATA_DIR, "evaluation_log.csv")
+    if os.path.exists(eval_log_path):
+        os.remove(eval_log_path)
     
     q_table = {}
-    episodes = 50
+    episodes = 60
     start_epsilon = 1.0
     end_epsilon = 0.05
+    epsilon_decay = 0.94
     
     print("=== Phase 1: Training ===")
-    with open("training_episode_summary.csv", "w", newline='') as f:
+    with open(os.path.join(DATA_DIR, "training_episode_summary.csv"), "w", newline='') as f:
         writer = csv.writer(f)
         writer.writerow(["episode", "total_reward", "epsilon"])
         
     for ep in range(episodes):
         generate_dynamic_route("Traci.rou.xml", ep)
         
-        # Smooth linear decay
-        epsilon = start_epsilon - ep * ((start_epsilon - end_epsilon) / max(1, episodes - 1))
-        epsilon = max(end_epsilon, epsilon)
+        # Multiplier decay
+        epsilon = max(end_epsilon, start_epsilon * (epsilon_decay ** ep))
         
-        total_r = run_episode(ep, q_table, epsilon=epsilon, learning=True, log_file="decision_log.csv")
+        total_r = run_episode(ep, q_table, epsilon=epsilon, learning=True, log_file=os.path.join(DATA_DIR, "decision_log.csv"))
         
-        with open("training_episode_summary.csv", "a", newline='') as f:
+        with open(os.path.join(DATA_DIR, "training_episode_summary.csv"), "a", newline='') as f:
             writer = csv.writer(f)
             writer.writerow([ep, total_r, epsilon])
             
@@ -98,7 +99,7 @@ def main():
     for idx, seed in enumerate(eval_seeds):
         generate_dynamic_route("Traci.rou.xml", seed)
         # Frozen: learning=False, epsilon=0.0
-        total_r = run_episode(f"eval_{seed}", q_table, epsilon=0.0, learning=False, log_file="evaluation_log.csv")
+        total_r = run_episode(f"eval_{seed}", q_table, epsilon=0.0, learning=False, log_file=os.path.join(DATA_DIR, "evaluation_log.csv"))
         print(f"Eval Run {idx+1} (Seed {seed}) | Reward: {total_r:.2f}")
 
     # 3. Live Fixed-Time Baselines
@@ -107,7 +108,7 @@ def main():
     baseline_seed = 42 # static seed for consistent baseline comparison
     
     for dur in durations:
-        run_fixed_time_baseline(dur, baseline_seed, f"baseline_{dur}s.csv")
+        run_fixed_time_baseline(dur, baseline_seed, os.path.join(DATA_DIR, f"baseline_{dur}s.csv"))
         
     print("\nAll experiments successfully completed.")
 
