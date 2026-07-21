@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import csv
 
 # Ensure SUMO_HOME is declared in system paths
 if 'SUMO_HOME' in os.environ:
@@ -45,21 +46,20 @@ def get_state(we_max_wait, ns_max_wait, we_queue, ns_queue):
     """
     Matches the exact state formulation used in q_learning_agent.py
     """
-    def discretize_queue(q):
-        if q < 5: return 0
-        if q <= 15: return 1
-        return 2
-
-    we_q_level = discretize_queue(we_queue)
-    ns_q_level = discretize_queue(ns_queue)
-    
-    starving = 1 if (we_max_wait > 100.0 or ns_max_wait > 100.0) else 0
-    return f"{we_q_level}_{ns_q_level}_{starving}"
+    def categorize_queue(q):
+        if q < 3: return "Low"
+        elif q <= 5: return "Medium"
+        else: return "High"
+        
+    we_q = categorize_queue(we_queue)
+    ns_q = categorize_queue(ns_queue)
+    starving = "Starving" if (we_max_wait > 100.0 or ns_max_wait > 100.0) else "NoStarvation"
+    return f"{we_q}*{ns_q}*{starving}"
 
 def run_live_demonstration(num_vehicles=1200):
     # Set proper environment infrastructure paths
     sumo_cfg = "src/Traci.sumocfg"
-    q_table_file = "src/new_experiment_analytics/q_table.json"
+    q_table_file = "src/q_table.json"
     
     if not os.path.exists(sumo_cfg):
         sumo_cfg = "sumofiles/Traci.sumocfg"
@@ -77,11 +77,24 @@ def run_live_demonstration(num_vehicles=1200):
     # Removed --start and --quit-on-end so you can manually play/pause in the GUI
     traci.start([sumo_binary, "-c", sumo_cfg])
     
-    print("\n" + "="*70)
-    print("      LIVE AGENT PERFORMANCE EVALUATION TERMINAL DASHBOARD      ")
-    print("="*70)
-    print(f"{'Step':<6} | {'Observed State':<16} | {'Action Selected':<15} | {'WE Queue':<8} | {'NS Queue':<8} | {'Wait Time':<9}")
-    print("-"*70)
+    ACTIONS = [(10, 10), (20, 10), (30, 10), (45, 15), (10, 20), (10, 30), (20, 20), (30, 30), (45, 45)]
+    
+    os.makedirs("collected_data/agent_runs", exist_ok=True)
+    csv_file = open("collected_data/agent_runs/live_demo_metrics.csv", "w", newline='')
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow([
+        "decision_step", "sim_time", "state", "chosen_action_id", 
+        "we_green_time", "ns_green_time", "active_phase", 
+        "we_queue_length", "ns_queue_length", 
+        "we_max_wait", "ns_max_wait", "total_waiting_time"
+    ])
+    
+    
+    print("\n" + "="*85)
+    print("        LIVE AGENT REAL-TIME SIGNAL TIMING & PERFORMANCE TERMINAL DASHBOARD       ")
+    print("="*85)
+    print(f"{'Step':<6} | {'Sim Time':<9} | {'State':<10} | {'Selected Signal Timing':<22} | {'WE Cars':<8} | {'NS Cars':<8} | {'Wait Time':<9}")
+    print("-"*85)
 
     step = 0
     
@@ -103,33 +116,71 @@ def run_live_demonstration(num_vehicles=1200):
             # Map raw vehicle numbers to the exact state key space from training
             current_state = get_state(we_max_wait, ns_max_wait, we_queue, ns_queue)
             
+            sim_time = traci.simulation.getTime()
+            
             # Pure exploitation policy lookup (Epsilon = 0.0)
             if current_state in q_table:
-                action_values = q_table[current_state]
-                chosen_action = action_values.index(max(action_values))
-                action_desc = f"Action {chosen_action}"
+                q_values = q_table[current_state]
+                chosen_action = q_values.index(max(q_values))
+                we_dur, ns_dur = ACTIONS[chosen_action]
+                timing_display = f"{we_dur}s WE / {ns_dur}s NS"
             else:
                 chosen_action = 0  
-                action_desc = "Default (Unseen)"
+                we_dur, ns_dur = ACTIONS[0]
+                timing_display = "10s WE / 10s NS (Unseen State - Default)"
 
-            # Execute the chosen action's transition phase manually to match the delay
-            # Action 0 = (10, 10), Action 7 = (45, 20), etc.
-            # We just step it for a default transition so the live demo looks good.
-            traci.simulationStep()
-            step += 1
-            
-            # PRESENTATION FIX: Only print when a new state is observed or every 50 steps 
-            # to keep the dashboard extremely clean, comprehensive, and readable down the page
-            if current_state != last_logged_state or step % 50 == 0:
-                print(f"{step:<6} | {current_state:<16} | {action_desc:<15} | {we_queue:<8} | {ns_queue:<8} | {total_waiting_time:<9.2f}s")
+            if current_state != last_logged_state or step % 20 == 0:
+                print(f"{step:<6} | {sim_time:<8.1f}s | {current_state:<10} | {timing_display:<22} | {we_queue:<8} | {ns_queue:<8} | {total_waiting_time:<8.1f}s")
                 last_logged_state = current_state
             
-            # Python execution is no longer artificially slowed. 
-            # Use the "Delay (ms)" slider in the SUMO GUI to control the simulation speed.
+            # WE Green
+            traci.trafficlight.setPhase("J2", 0)
+            for _ in range(we_dur):
+                traci.simulationStep()
+                if traci.simulation.getMinExpectedNumber() == 0: break
+                
+            csv_writer.writerow([
+                step, int(traci.simulation.getTime()), current_state, chosen_action,
+                we_dur, ns_dur, "WE_GREEN", 
+                we_queue, ns_queue, we_max_wait, ns_max_wait, total_waiting_time
+            ])
+            
+            if traci.simulation.getMinExpectedNumber() == 0: break
+            
+            # WE Yellow
+            traci.trafficlight.setPhase("J2", 1)
+            for _ in range(3):
+                traci.simulationStep()
+                if traci.simulation.getMinExpectedNumber() == 0: break
+                
+            if traci.simulation.getMinExpectedNumber() == 0: break
+            
+            # NS Green
+            traci.trafficlight.setPhase("J2", 2)
+            for _ in range(ns_dur):
+                traci.simulationStep()
+                if traci.simulation.getMinExpectedNumber() == 0: break
+                
+            csv_writer.writerow([
+                step, int(traci.simulation.getTime()), current_state, chosen_action,
+                we_dur, ns_dur, "NS_GREEN", 
+                we_queue, ns_queue, we_max_wait, ns_max_wait, total_waiting_time
+            ])
+            
+            if traci.simulation.getMinExpectedNumber() == 0: break
+            
+            # NS Yellow
+            traci.trafficlight.setPhase("J2", 3)
+            for _ in range(3):
+                traci.simulationStep()
+                if traci.simulation.getMinExpectedNumber() == 0: break
+                
+            step += 1
             
     except traci.exceptions.FatalTraCIError:
         print("\n[!] SUMO user interface window closed by viewer.")
     finally:
+        csv_file.close()
         try:
             traci.close()
         except:
