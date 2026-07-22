@@ -1,76 +1,65 @@
 import os
+import glob
+import csv
 from pathlib import Path
 
 def main():
-    workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    root = Path(workspace_root)
+    base_dir = Path(r"C:\VSCODE\CISInternship_Implement")
+    data_dir = base_dir / "collected_data"
     
-    # Categories
-    active_code = []
-    legacy_scripts = []
-    redundant_routes = []
-    live_config = []
+    csv_files = glob.glob(os.path.join(data_dir, "*.csv"))
     
-    # 1. Active Code (src/*.py)
-    src_dir = root / "src"
-    if src_dir.exists():
-        for py_file in src_dir.glob("*.py"):
-            active_code.append(py_file.relative_to(root))
-            
-    # 2. Legacy Scripts (analysis/, scripts/, scratch_*.py)
-    analysis_dir = root / "analysis"
-    if analysis_dir.exists():
-        for py_file in analysis_dir.glob("*.py"):
-            legacy_scripts.append(py_file.relative_to(root))
-            
-    scripts_dir = root / "scripts"
-    if scripts_dir.exists():
-        for py_file in scripts_dir.glob("*.py"):
-            legacy_scripts.append(py_file.relative_to(root))
-            
-    # 3. Routes
-    # Redundant
-    root_route = root / "Traci.rou.xml"
-    if root_route.exists():
-        redundant_routes.append(root_route.relative_to(root))
-        
-    test_route = root / "src" / "test.rou.xml"
-    if test_route.exists():
-        redundant_routes.append(test_route.relative_to(root))
-        
-    # Live
-    live_route = root / "src" / "Traci.rou.xml"
-    if live_route.exists():
-        live_config.append(live_route.relative_to(root))
-        
-    print("\n========================================================")
-    print(" DRY-RUN INVENTORY: NON-DESTRUCTIVE SAFETY SCAN ")
-    print("========================================================\n")
+    print("="*60)
+    print("INVENTORY SCAN: HISTORICAL DATASETS")
+    print("="*60)
     
-    print("[SAFE] ACTIVE PRODUCTION CODE (Must NEVER be altered/moved):")
-    for f in sorted(active_code):
-        print(f"  + {f}")
+    unique_scenarios = set()
+    durations = set()
+    
+    headers = None
+    
+    for filepath in csv_files:
+        filename = os.path.basename(filepath)
         
-    print("\n[SAFE] LIVE CONFIGURATION (Preserve):")
-    for f in sorted(live_config):
-        print(f"  + {f}")
+        # Example: metrics_dur_10s_cars_200total_1000s.csv
+        # or metrics_dur_10s_cars_200total_1000s_unbalanced.csv
         
-    print("\n[FLAGGED] LEGACY SCRIPTS & SCRATCHPADS (analysis/ and scripts/):")
-    for f in sorted(legacy_scripts):
-        if "inventory_scan.py" in str(f) or "purge_old_experiments.py" in str(f):
-            print(f"  ~ {f} (Utility script)")
-        elif "scratch" in str(f):
-            print(f"  - {f} (Experimental Scratchpad)")
-        else:
-            print(f"  - {f} (Historical/Duplicate Script)")
+        parts = filename.replace('.csv', '').split('_')
+        
+        # Extract duration
+        duration = None
+        for p in parts:
+            if p.endswith('s') and p[:-1].isdigit() and not p.endswith('1000s'):
+                duration = p
+                durations.add(duration)
+                
+        # Extract cars
+        cars = None
+        for p in parts:
+            if p.endswith('total'):
+                cars = int(p.replace('total', ''))
+                
+        # Extract balance
+        balance = "unbalanced" if "unbalanced" in parts else "balanced"
+        
+        if cars is not None:
+            unique_scenarios.add((cars, balance))
             
-    print("\n[FLAGGED] REDUNDANT ROUTE FILES (Targeted for removal):")
-    for f in sorted(redundant_routes):
-        print(f"  - {f}")
+        # Get headers from first file
+        if headers is None:
+            with open(filepath, 'r') as f:
+                reader = csv.reader(f)
+                headers = next(reader)
+                
+    print(f"Found {len(csv_files)} baseline CSV files.")
+    print(f"Unique fixed signal durations: {sorted(list(durations))}")
+    print("\nUnique Traffic Scenarios (Cars, Balance):")
+    for cars, balance in sorted(list(unique_scenarios)):
+        print(f" - {cars} vehicles, {balance} traffic")
         
-    print("\n========================================================")
-    print(" SCAN COMPLETE - ZERO FILES MODIFIED OR MOVED.")
-    print("========================================================")
-
-if __name__ == "__main__":
+    print(f"\nExtracted Baseline Column Headers ({len(headers)} columns):")
+    for i, h in enumerate(headers):
+        print(f" {i+1}. {h}")
+        
+if __name__ == '__main__':
     main()
