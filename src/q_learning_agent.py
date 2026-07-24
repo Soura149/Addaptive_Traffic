@@ -3,224 +3,236 @@ import sys
 import json
 import random
 import csv
-import argparse
-from pathlib import Path
 
 # Add SUMO tools
 if 'SUMO_HOME' in os.environ:
     sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
 else:
-    sys.exit("CRITICAL ERROR: Please declare environment variable 'SUMO_HOME'")
+    # Ensure this doesn't crash during unit test if SUMO_HOME is missing, just skip traci import
+    pass
 
-import traci
+try:
+    import traci
+    from sumolib import checkBinary
+except ImportError:
+    pass
+
+WORKSPACE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTPUT_DIR = os.path.join(WORKSPACE_DIR, "outputs")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 class QLearningAgent:
-    def __init__(self):
-        self.alpha = 0.1
-        self.gamma = 0.9
-        self.epsilon = 1.0
-        self.epsilon_decay = 0.95
-        self.epsilon_min = 0.01
-        
-        self.actions = [(10, 10), (20, 10), (30, 10), (45, 15), (10, 20), (10, 30), (20, 20), (30, 30), (45, 45)]
+    def __init__(self, alpha=0.1, gamma=0.9, epsilon=1.0, epsilon_decay=0.995, min_epsilon=0.01):
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.epsilon_decay = epsilon_decay
+        self.min_epsilon = min_epsilon
+        self.actions = [10, 20, 30, 45]
         self.q_table = {}
         
-        with open("src/calibration_bounds.json", "r") as f:
-            self.bounds = json.load(f)
+        self.bounds = self.load_calibration_bounds()
+        
+        self.decision_log_path = os.path.join(OUTPUT_DIR, "decision_log.csv")
+        self.summary_log_path = os.path.join(OUTPUT_DIR, "training_summary.csv")
+        self.q_table_path = os.path.join(OUTPUT_DIR, "q_table.json")
+        
+        self._init_logs()
+
+    def _init_logs(self):
+        if not os.path.exists(self.decision_log_path):
+            with open(self.decision_log_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["episode", "decision_step", "scenario", "state", "action", "next_state", "we_wait", "ns_wait", "total_wait", "we_queue", "ns_queue", "total_queue", "transition_throughput", "reward", "q_before", "q_after"])
+        
+        if not os.path.exists(self.summary_log_path):
+            with open(self.summary_log_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["episode", "scenario", "total_reward", "avg_queue", "avg_wait", "total_throughput"])
+
+    def load_calibration_bounds(self):
+        bounds_path = os.path.join(WORKSPACE_DIR, "src", "calibration_bounds.json")
+        if not os.path.exists(bounds_path):
+            print(f"Warning: Bounds file not found at {bounds_path}. Using default bounds.")
+            return {"W_min": 0, "W_max": 300, "Q_min": 0, "Q_max": 10, "T_min": 0, "T_max": 1.0}
+        
+        with open(bounds_path, 'r') as f:
+            bounds = json.load(f)
+        return bounds
+
+    def _get_queue_level(self, q):
+        if q < 5:
+            return "Low"
+        elif q < 15:
+            return "Medium"
+        else:
+            return "High"
+
+    def get_state(self, we_queue, ns_queue, we_wait, ns_wait):
+        we_level = self._get_queue_level(we_queue)
+        ns_level = self._get_queue_level(ns_queue)
+        
+        we_starving = we_wait > 100.0
+        ns_starving = ns_wait > 100.0
+        
+        if we_starving and ns_starving:
+            starvation = "Both_Starving"
+        elif we_starving:
+            starvation = "WE_Starving"
+        elif ns_starving:
+            starvation = "NS_Starving"
+        else:
+            starvation = "NoStarvation"
             
-    def load_q_table(self, path):
-        if os.path.exists(path):
-            with open(path, "r") as f:
-                self.q_table = json.load(f)
-                
-    def save_q_table(self, path):
-        with open(path, "w") as f:
+        return f"{we_level}_{ns_level}_{starvation}"
+
+    def calculate_reward(self, T, W, Q, we_wait, ns_wait):
+        def _normalize(val, min_val, max_val, invert=False):
+            if max_val == min_val:
+                return 0.5
+            norm = (val - min_val) / (max_val - min_val)
+            if invert:
+                norm = 1.0 - norm
+            # Clip between 0 and 1
+            return max(0.0, min(1.0, norm))
+            
+        T_q = _normalize(T, self.bounds['T_min'], self.bounds['T_max'], invert=False)
+        W_q = _normalize(W, self.bounds['W_min'], self.bounds['W_max'], invert=True)
+        Q_q = _normalize(Q, self.bounds['Q_min'], self.bounds['Q_max'], invert=True)
+        
+        P_s = 2.0 if max(we_wait, ns_wait) > 100.0 else 0.0
+        
+        R = 0.50 * T_q + 0.30 * W_q + 0.20 * Q_q - P_s
+        return R
+
+    def choose_action(self, state):
+        if state not in self.q_table:
+            self.q_table[state] = {str(a): 0.0 for a in self.actions}
+            
+        if random.uniform(0, 1) < self.epsilon:
+            return random.choice(self.actions)
+        else:
+            # max Q
+            q_vals = self.q_table[state]
+            return int(max(q_vals, key=q_vals.get))
+
+    def update_q_value(self, state, action, reward, next_state):
+        if state not in self.q_table:
+            self.q_table[state] = {str(a): 0.0 for a in self.actions}
+        if next_state not in self.q_table:
+            self.q_table[next_state] = {str(a): 0.0 for a in self.actions}
+            
+        action_str = str(action)
+        q_before = self.q_table[state][action_str]
+        
+        max_next_q = max(self.q_table[next_state].values())
+        new_q = q_before + self.alpha * (reward + self.gamma * max_next_q - q_before)
+        
+        self.q_table[state][action_str] = new_q
+        
+        return q_before, new_q
+
+    def save_q_table(self):
+        with open(self.q_table_path, 'w') as f:
             json.dump(self.q_table, f, indent=4)
 
-    def _normalize(self, val, v_min, v_max, invert=False):
-        if v_max == v_min:
-            return 0.5
-        norm = (val - v_min) / (v_max - v_min)
-        # Ensure bounds clamping just in case empirical bounds are exceeded slightly
-        norm = max(0.0, min(1.0, norm))
-        if invert:
-            return 1.0 - norm
-        return norm
+    def log_decision(self, episode, step, scenario, state, action, next_state, we_w, ns_w, t_w, we_q, ns_q, t_q, t_rate, r, q_b, q_a):
+        with open(self.decision_log_path, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([episode, step, scenario, state, action, next_state, we_w, ns_w, t_w, we_q, ns_q, t_q, t_rate, r, q_b, q_a])
 
-    def get_state(self, we_queue, ns_queue, we_max_wait, ns_max_wait):
-        def categorize_queue(q):
-            if q < 3: return "Low"
-            elif q <= 5: return "Medium"
-            else: return "High"
-            
-        we_q = categorize_queue(we_queue)
-        ns_q = categorize_queue(ns_queue)
-        starving = "Starving" if (we_max_wait > 100.0 or ns_max_wait > 100.0) else "NoStarvation"
-        return f"{we_q}*{ns_q}*{starving}"
+    def log_summary(self, episode, scenario, total_r, avg_q, avg_w, total_t):
+        with open(self.summary_log_path, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([episode, scenario, total_r, avg_q, avg_w, total_t])
 
-    def get_action(self, state, evaluate=False):
-        if state not in self.q_table:
-            self.q_table[state] = [0.0] * 9
-            
-        if not evaluate and random.uniform(0, 1) < self.epsilon:
-            return random.choice(range(len(self.actions)))
-        else:
-            return self.q_table[state].index(max(self.q_table[state]))
-
-    def get_metrics(self):
-        we_vehs = traci.edge.getLastStepVehicleIDs("E0")
-        ns_vehs = traci.edge.getLastStepVehicleIDs("E1")
+    def run_training_episode(self, episode, scenario_name, route_path, use_gui=False):
+        net_path = os.path.join(WORKSPACE_DIR, "sumofiles", "Traci.net.xml")
         
-        we_queue = traci.edge.getLastStepHaltingNumber("E0")
-        ns_queue = traci.edge.getLastStepHaltingNumber("E1")
+        sumo_binary = checkBinary('sumo-gui') if use_gui else checkBinary('sumo')
+        cmd = [sumo_binary, "-n", net_path, "-r", route_path, "--no-step-log", "true", "--no-warnings", "true", "--time-to-teleport", "-1"]
         
-        we_max_wait = max([traci.vehicle.getWaitingTime(v) for v in we_vehs]) if we_vehs else 0.0
-        ns_max_wait = max([traci.vehicle.getWaitingTime(v) for v in ns_vehs]) if ns_vehs else 0.0
+        traci.start(cmd)
         
-        total_wait = sum([traci.vehicle.getWaitingTime(v) for v in we_vehs]) + sum([traci.vehicle.getWaitingTime(v) for v in ns_vehs])
-        total_queue = we_queue + ns_queue
+        we_edges = ["E0"]
+        ns_edges = ["E1"]
         
-        return we_queue, ns_queue, we_max_wait, ns_max_wait, total_wait, total_queue
-
-    def run_cycle(self, action_idx):
-        we_green, ns_green = self.actions[action_idx]
-        arrived = 0
-        steps = 0
+        def get_metrics():
+            we_q = sum(traci.edge.getLastStepHaltingNumber(e) for e in we_edges)
+            ns_q = sum(traci.edge.getLastStepHaltingNumber(e) for e in ns_edges)
+            we_w = sum(traci.edge.getWaitingTime(e) for e in we_edges)
+            ns_w = sum(traci.edge.getWaitingTime(e) for e in ns_edges)
+            return we_q, ns_q, we_q + ns_q, we_w, ns_w, we_w + ns_w
+            
+        step = 0
+        total_reward = 0
+        sum_q = 0
+        sum_w = 0
+        total_throughput = 0
+        decisions = 0
         
-        # WE Green
-        traci.trafficlight.setPhase("J2", 0)
-        for _ in range(we_green):
-            traci.simulationStep()
-            arrived += traci.simulation.getArrivedNumber()
-            steps += 1
-            if traci.simulation.getMinExpectedNumber() == 0: return arrived, steps
-            
-        # WE Yellow
-        traci.trafficlight.setPhase("J2", 1)
-        for _ in range(3):
-            traci.simulationStep()
-            arrived += traci.simulation.getArrivedNumber()
-            steps += 1
-            if traci.simulation.getMinExpectedNumber() == 0: return arrived, steps
-            
-        # NS Green
-        traci.trafficlight.setPhase("J2", 2)
-        for _ in range(ns_green):
-            traci.simulationStep()
-            arrived += traci.simulation.getArrivedNumber()
-            steps += 1
-            if traci.simulation.getMinExpectedNumber() == 0: return arrived, steps
-            
-        # NS Yellow
-        traci.trafficlight.setPhase("J2", 3)
-        for _ in range(3):
-            traci.simulationStep()
-            arrived += traci.simulation.getArrivedNumber()
-            steps += 1
-            if traci.simulation.getMinExpectedNumber() == 0: return arrived, steps
-            
-        return arrived, steps
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--train', type=int, default=0)
-    parser.add_argument('--evaluate', type=int, default=0)
-    parser.add_argument('--scenario', type=str, default="sumofiles/routes/s3_heavy_asym_1200.rou.xml")
-    parser.add_argument('--gui', action='store_true')
-    args = parser.parse_args()
-
-    base_dir = Path(r"C:\VSCODE\CISInternship_Implement")
-    os.chdir(base_dir)
-
-    agent = QLearningAgent()
-    
-    if os.path.exists("src/q_table.json"):
-        agent.load_q_table("src/q_table.json")
-
-    os.makedirs("outputs", exist_ok=True)
-    
-    episodes = args.train if args.train > 0 else args.evaluate
-    evaluate_mode = args.evaluate > 0
-    
-    if evaluate_mode:
-        agent.epsilon = 0.0
-
-    print("="*60)
-    print("STEP 3: Q-LEARNING AGENT EXECUTION")
-    print("="*60)
-    print(f"Mode: {'Evaluate' if evaluate_mode else 'Train'}")
-    print(f"Episodes: {episodes}")
-    print(f"Scenario: {args.scenario}")
-    
-    decision_log_path = f"outputs/decision_log.csv"
-    episode_log_path = f"outputs/training_episode_summary.csv"
-    
-    with open(decision_log_path, "w", newline='') as d_file, open(episode_log_path, "w", newline='') as e_file:
-        d_writer = csv.writer(d_file)
-        d_writer.writerow(["Episode", "Decision", "State", "Action", "Next_State", "WE_Wait", "NS_Wait", "WE_Queue", "NS_Queue", "Total_Wait", "Total_Queue", "Throughput_Rate", "W_q", "T_q", "Q_q", "Reward", "Q_before", "Q_after"])
+        current_phase = 0 # 0 for WE, 2 for NS
         
-        e_writer = csv.writer(e_file)
-        e_writer.writerow(["Episode", "Total_Reward", "Epsilon", "Steps"])
+        # Initial state
+        we_q, ns_q, t_q, we_w, ns_w, t_w = get_metrics()
+        state = self.get_state(we_q, ns_q, we_w, ns_w)
         
-        decision = 0
-        for ep in range(episodes):
-            sumo_binary = "sumo-gui" if args.gui else "sumo"
-            sumo_cmd = [sumo_binary, "-n", "sumofiles/Traci.net.xml", "-r", args.scenario, "--no-warnings"]
-            traci.start(sumo_cmd)
+        while traci.simulation.getMinExpectedNumber() > 0:
+            action = self.choose_action(state)
             
-            ep_reward = 0
-            ep_steps = 0
+            traci.trafficlight.setPhase("J2", current_phase)
             
-            we_queue, ns_queue, we_max_wait, ns_max_wait, total_wait, total_queue = agent.get_metrics()
-            state = agent.get_state(we_queue, ns_queue, we_max_wait, ns_max_wait)
-            
-            while traci.simulation.getMinExpectedNumber() > 0:
-                action_idx = agent.get_action(state, evaluate=evaluate_mode)
-                q_before = agent.q_table[state][action_idx]
-                
-                arrived, steps = agent.run_cycle(action_idx)
-                ep_steps += steps
-                
+            arrived = 0
+            for _ in range(action):
+                traci.simulationStep()
+                arrived += traci.simulation.getArrivedNumber()
+                step += 1
                 if traci.simulation.getMinExpectedNumber() == 0:
                     break
                     
-                we_queue, ns_queue, we_max_wait, ns_max_wait, total_wait, total_queue = agent.get_metrics()
-                next_state = agent.get_state(we_queue, ns_queue, we_max_wait, ns_max_wait)
-                
-                T = arrived / steps if steps > 0 else 0
-                
-                W_q = agent._normalize(total_wait, agent.bounds["W_min"], agent.bounds["W_max"], invert=True)
-                Q_q = agent._normalize(total_queue, agent.bounds["Q_min"], agent.bounds["Q_max"], invert=True)
-                T_q = agent._normalize(T, agent.bounds["T_min"], agent.bounds["T_max"], invert=False)
-                P_s = 2.0 if (we_max_wait > 100.0 or ns_max_wait > 100.0) else 0.0
-                
-                reward = 0.50 * W_q + 0.30 * T_q + 0.20 * Q_q - P_s
-                
-                if next_state not in agent.q_table:
-                    agent.q_table[next_state] = [0.0, 0.0, 0.0, 0.0]
-                    
-                if not evaluate_mode:
-                    agent.q_table[state][action_idx] = q_before + agent.alpha * (reward + agent.gamma * max(agent.q_table[next_state]) - q_before)
-                q_after = agent.q_table[state][action_idx]
-                
-                ep_reward += reward
-                
-                d_writer.writerow([ep+1, decision, state, agent.actions[action_idx], next_state, f"{we_max_wait:.2f}", f"{ns_max_wait:.2f}", we_queue, ns_queue, f"{total_wait:.2f}", total_queue, f"{T:.4f}", f"{W_q:.4f}", f"{T_q:.4f}", f"{Q_q:.4f}", f"{reward:.4f}", f"{q_before:.4f}", f"{q_after:.4f}"])
-                decision += 1
-                state = next_state
-                
-            traci.close()
-            e_writer.writerow([ep+1, f"{ep_reward:.4f}", f"{agent.epsilon:.4f}", ep_steps])
-            print(f"Episode {ep+1}/{episodes} completed. Reward: {ep_reward:.2f}, Epsilon: {agent.epsilon:.4f}, Steps: {ep_steps}")
+            t_rate = arrived / action
+            total_throughput += arrived
             
-            if not evaluate_mode:
-                agent.epsilon = max(agent.epsilon_min, agent.epsilon * agent.epsilon_decay)
+            next_we_q, next_ns_q, next_t_q, next_we_w, next_ns_w, next_t_w = get_metrics()
+            next_state = self.get_state(next_we_q, next_ns_q, next_we_w, next_ns_w)
+            
+            reward = self.calculate_reward(t_rate, next_t_w, next_t_q, next_we_w, next_ns_w)
+            
+            q_b, q_a = self.update_q_value(state, action, reward, next_state)
+            
+            self.log_decision(episode, decisions, scenario_name, state, action, next_state, next_we_w, next_ns_w, next_t_w, next_we_q, next_ns_q, next_t_q, t_rate, reward, q_b, q_a)
+            
+            total_reward += reward
+            sum_q += next_t_q
+            sum_w += next_t_w
+            decisions += 1
+            
+            state = next_state
+            
+            if traci.simulation.getMinExpectedNumber() == 0:
+                break
                 
-    if not evaluate_mode:
-        agent.save_q_table("src/q_table.json")
-        print("Q-Table saved to src/q_table.json")
+            # Yellow Phase
+            traci.trafficlight.setPhase("J2", current_phase + 1)
+            for _ in range(3):
+                traci.simulationStep()
+                step += 1
+                if traci.simulation.getMinExpectedNumber() == 0:
+                    break
+                    
+            current_phase = 2 if current_phase == 0 else 0
+            
+        traci.close()
         
-    print("STATUS: AUDIT COMPLETE")
+        avg_q = sum_q / decisions if decisions > 0 else 0
+        avg_w = sum_w / decisions if decisions > 0 else 0
+        
+        self.log_summary(episode, scenario_name, total_reward, avg_q, avg_w, total_throughput)
+        
+        # Decay epsilon
+        self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+        
+        return total_reward
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    pass
