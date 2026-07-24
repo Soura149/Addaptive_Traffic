@@ -67,7 +67,7 @@ def run_evaluation(agent, scenario, controller_type):
     return throughput, avg_wait, avg_queue, starvation_incidents, ep_steps
 
 def main():
-    base_dir = Path(r"C:\VSCODE\CISInternship_Implement")
+    base_dir = Path(r"C:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic")
     os.chdir(base_dir)
     os.makedirs("outputs", exist_ok=True)
     

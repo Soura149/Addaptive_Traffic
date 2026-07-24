@@ -85,7 +85,7 @@ def main():
         T_min, T_max = 0, 1
 
     # To calculate theoretical mean step reward across all scenarios:
-    def calc_reward(W, Q, T, w_W=0.5, w_Q=0.2, w_T=0.3, Ps=2.0):
+    def calc_reward(W, Q, T, w_W=0.3, w_Q=0.2, w_T=0.5, Ps=2.0):
         # We use dynamic global bounds
         W_q = np.maximum(0, 1.0 - (W / W_max)) if W_max > 0 else 0
         Q_q = np.maximum(0, 1.0 - (Q / Q_max)) if Q_max > 0 else 0

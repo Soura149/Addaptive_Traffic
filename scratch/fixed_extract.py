@@ -5,12 +5,12 @@ import glob
 from pathlib import Path
 
 # Add src to path so we can import the agent
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
 
 from q_learning_agent import QLearningAgent
 from generate_scenarios import generate_route_file
 import traci
-import numpy as np
 
 def run_extraction():
     base_dir = Path(r"C:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic")
@@ -41,8 +41,10 @@ def run_extraction():
     print(f"Identified {len(unique_scenarios)} unique historical scenarios.")
     
     agent = QLearningAgent()
-    if os.path.exists("src/q_table.json"):
-        agent.load_q_table("src/q_table.json")
+    if os.path.exists("outputs/q_table.json"):
+        import json
+        with open("outputs/q_table.json", 'r') as f:
+            agent.q_table = json.load(f)
     
     agent.epsilon = 0.0  # Frozen evaluation mode
     
@@ -60,11 +62,7 @@ def run_extraction():
         "NS_Green_Duration"
     ]
     
-    # Store mappings for the matrix
-    mappings = []
-    
     for cars, balance in sorted(list(unique_scenarios)):
-        # Generate temporary route file
         route_scenario_name = f"dynamic_{cars}_{balance}"
         route_filename = f"{route_scenario_name}.rou.xml"
         route_path = base_dir / "sumofiles" / "routes" / route_filename
@@ -78,6 +76,7 @@ def run_extraction():
             ns = int(cars * 0.25)
             agent_filename = f"metrics_agent_cars_{cars}total_1000s_unbalanced.csv"
             
+        # Call generate_route_file properly
         generate_route_file(route_scenario_name, {"we": we, "ns": ns})
         
         out_filepath = output_dir / agent_filename
@@ -85,35 +84,48 @@ def run_extraction():
         sumo_cmd = ["sumo", "-n", "sumofiles/Traci.net.xml", "-r", str(route_path), "--no-warnings"]
         traci.start(sumo_cmd)
         
-        we_queue, ns_queue, we_max_wait, ns_max_wait, total_wait, total_queue = agent.get_metrics()
-        state = agent.get_state(we_queue, ns_queue, we_max_wait, ns_max_wait)
+        we_edges = ["E0"]
+        ns_edges = ["E1"]
         
-        decision_step = 1
+        def get_metrics():
+            we_q = sum(traci.edge.getLastStepHaltingNumber(e) for e in we_edges)
+            ns_q = sum(traci.edge.getLastStepHaltingNumber(e) for e in ns_edges)
+            we_w = sum(traci.edge.getWaitingTime(e) for e in we_edges)
+            ns_w = sum(traci.edge.getWaitingTime(e) for e in ns_edges)
+            return we_q, ns_q, we_q + ns_q, we_w, ns_w, we_w + ns_w
+            
+        current_phase = 0
+        
+        we_queue, ns_queue, t_queue, we_wait, ns_wait, t_wait = get_metrics()
+        state = agent.get_state(we_queue, ns_queue, we_wait, ns_wait)
+        
         with open(out_filepath, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(headers)
             
             while traci.simulation.getMinExpectedNumber() > 0:
-                action_idx = agent.get_action(state, evaluate=True)
-                arrived, steps = agent.run_cycle(action_idx)
+                action = agent.choose_action(state)
                 
+                traci.trafficlight.setPhase("J2", current_phase)
+                
+                arrived = 0
+                for _ in range(action):
+                    traci.simulationStep()
+                    arrived += traci.simulation.getArrivedNumber()
+                    if traci.simulation.getMinExpectedNumber() == 0:
+                        break
+                        
                 if traci.simulation.getMinExpectedNumber() == 0:
                     break
                     
-                we_queue, ns_queue, we_max_wait, ns_max_wait, total_wait, total_queue = agent.get_metrics()
-                next_state = agent.get_state(we_queue, ns_queue, we_max_wait, ns_max_wait)
+                we_queue, ns_queue, t_queue, we_wait, ns_wait, t_wait = get_metrics()
+                next_state = agent.get_state(we_queue, ns_queue, we_wait, ns_wait)
                 
-                queue_sd = abs(we_queue - ns_queue) / 2.0  # std dev of two values
+                queue_sd = abs(we_queue - ns_queue) / 2.0
                 
-                # We don't have separate arrival counts easily from run_cycle, just put total in Throughput
-                arrival_we = 0
-                arrival_ns = 0
+                avg_wait_we = we_wait / 2.0 
+                avg_wait_ns = ns_wait / 2.0
                 
-                # Max wait is the closest to avg waiting time we have readily available without tracking every vehicle
-                avg_wait_we = we_max_wait / 2.0 
-                avg_wait_ns = ns_max_wait / 2.0
-                
-                # Use simulation time as step to align with 1000s duration timeline
                 sim_time = int(traci.simulation.getTime())
                 
                 writer.writerow([
@@ -121,41 +133,30 @@ def run_extraction():
                     we_queue,
                     ns_queue,
                     f"{queue_sd:.2f}",
-                    arrival_we,
-                    arrival_ns,
-                    arrived,
+                    0, 0, arrived,
                     f"{avg_wait_we:.2f}",
                     f"{avg_wait_ns:.2f}",
-                    agent.actions[action_idx][0],
-                    agent.actions[action_idx][1]
+                    action if current_phase == 0 else 0,
+                    action if current_phase == 2 else 0
                 ])
                 
-                decision_step += 1
                 state = next_state
+                
+                # Yellow phase
+                traci.trafficlight.setPhase("J2", current_phase + 1)
+                for _ in range(3):
+                    traci.simulationStep()
+                    if traci.simulation.getMinExpectedNumber() == 0:
+                        break
+                        
+                current_phase = 2 if current_phase == 0 else 0
                 
         traci.close()
         
-        # Verify row count
         with open(out_filepath, "r") as f:
             row_count = sum(1 for _ in f) - 1
             
         print(f"Generated {agent_filename} (Rows: {row_count})")
         
-        # Add to mappings for the matrix (match with all corresponding durations)
-        for d in ["10s", "20s", "30s", "45s"]:
-            if balance == "balanced":
-                hist_name = f"metrics_dur_{d}_cars_{cars}total_1000s.csv"
-            else:
-                hist_name = f"metrics_dur_{d}_cars_{cars}total_1000s_unbalanced.csv"
-            mappings.append((hist_name, agent_filename))
-            
-    print("\n" + "="*80)
-    print("MAPPING MATRIX: HISTORICAL DATASETS -> Q-AGENT COUNTERPARTS")
-    print("="*80)
-    print(f"{'Historical Baseline CSV':<50} | {'Generated Q-Agent CSV':<40}")
-    print("-" * 95)
-    for hist, agent_f in mappings:
-        print(f"{hist:<50} | {agent_f:<40}")
-
 if __name__ == '__main__':
     run_extraction()

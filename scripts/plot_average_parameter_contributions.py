@@ -18,7 +18,7 @@ def generate_average_parameter_contributions():
         df = pd.concat(df_list, ignore_index=True)
         
         # 2. Compute weighted contributions (normalized value * weight factor)
-        # Weights used in your formula: w_W = 0.50, w_Q = 0.20, w_T = 0.30
+        # Weights used in your formula: w_W = 0.30, w_Q = 0.20, w_T = 0.50
         
         # Queue Penalty Contribution: w_Q * (1 - Q_q)
         if 'Q_q' in df:
@@ -34,7 +34,7 @@ def generate_average_parameter_contributions():
         else:
             throughput = df['Throughput_Step'] if 'Throughput_Step' in df else df.get('throughput', 0)
             t_score = (throughput / 1.0).clip(0, 1)
-        t_contrib = (0.30 * t_score).mean()
+        t_contrib = (0.50 * t_score).mean()
         
         # Wait Penalty Contribution: w_W * (1 - W_q)
         if 'W_q' in df:
@@ -42,7 +42,7 @@ def generate_average_parameter_contributions():
         else:
             wait_time = df['Avg_Waiting_Time_West_East'] + df['Avg_Waiting_Time_North_South'] if 'Avg_Waiting_Time_West_East' in df else df.get('waiting_time', 0)
             w_score = (1 - wait_time / 327.0).clip(0, 1)
-        w_contrib = (0.50 * (1 - w_score)).mean()
+        w_contrib = (0.30 * (1 - w_score)).mean()
         
         # Fairness Penalty Contribution
         if 'fairness_score' in df:
@@ -83,7 +83,7 @@ def generate_average_parameter_contributions():
     plt.tight_layout()
     output_path = 'outputs/average_effect_reward_parameters.png'
     plt.savefig(output_path)
-    plt.show()
+    
     print(f"✅ Generated parameter contribution chart: {output_path}")
 
 if __name__ == '__main__':

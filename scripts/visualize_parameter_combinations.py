@@ -75,7 +75,7 @@ def main():
     # We extend W_max to > 100 to explicitly visualize the starvation cliff if the raw max doesn't reach it.
     plot_W_max = max(W_max, 110.0)
 
-    def calc_reward(W, Q, T, w_W=0.5, w_Q=0.2, w_T=0.3, Ps=2.0):
+    def calc_reward(W, Q, T, w_W=0.3, w_Q=0.2, w_T=0.5, Ps=2.0):
         # We use dynamic global max for normalization as extracted from raw data
         norm_W_max = W_max if W_max > 0 else 1.0
         norm_Q_max = Q_max if Q_max > 0 else 1.0
@@ -145,10 +145,10 @@ def main():
     W_vals = np.linspace(W_min, plot_W_max, 500)
     
     # 3.1: Default System
-    R_default = calc_reward(W_vals, Q_mean, T_mean, w_W=0.5, w_Q=0.2, w_T=0.3)
+    R_default = calc_reward(W_vals, Q_mean, T_mean, w_W=0.3, w_Q=0.2, w_T=0.5)
     axes[0].plot(W_vals, R_default, lw=2, color='blue')
     axes[0].axvline(100, color='red', linestyle='--', label='Starvation Cliff')
-    axes[0].set_title("Default (w_W=0.5, w_T=0.3, w_Q=0.2)")
+    axes[0].set_title("Default (w_W=0.3, w_T=0.5, w_Q=0.2)")
     axes[0].set_xlabel("Waiting Time W (s)")
     axes[0].set_ylabel("Reward R")
     axes[0].grid(True)

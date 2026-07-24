@@ -10,7 +10,7 @@ from q_learning_agent import QLearningAgent
 import traci
 
 def run_extraction():
-    base_dir = Path(r"C:\VSCODE\CISInternship_Implement")
+    base_dir = Path(r"C:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic")
     os.chdir(base_dir)
     
     output_dir = "collected_data/agent_runs"

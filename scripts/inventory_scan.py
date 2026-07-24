@@ -4,7 +4,7 @@ import csv
 from pathlib import Path
 
 def main():
-    base_dir = Path(r"C:\VSCODE\CISInternship_Implement")
+    base_dir = Path(r"C:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic")
     data_dir = base_dir / "collected_data"
     
     csv_files = glob.glob(os.path.join(data_dir, "*.csv"))

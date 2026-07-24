@@ -15,7 +15,7 @@ def main():
     grid_res = 200
     
     # Reward Function Calculation (using standardized maxes for normalization)
-    def calc_reward(W, Q, T, w_W=0.5, w_Q=0.2, w_T=0.3, Ps=2.0):
+    def calc_reward(W, Q, T, w_W=0.3, w_Q=0.2, w_T=0.5, Ps=2.0):
         # We normalize W up to 327 and Q up to 9 to match original state formulations
         W_q = np.maximum(0, 1.0 - (W / 327.0))
         Q_q = np.maximum(0, 1.0 - (Q / 9.0))

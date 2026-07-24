@@ -113,26 +113,25 @@ def main():
 
     fig = plt.figure(figsize=(16, 6), dpi=300)
     
-    # Surface plot with penalty
-    ax1 = fig.add_subplot(1, 2, 1, projection='3d')
-    R_grid = calc_reward(W_grid, Q_grid, 0.5, 0.3, 0.2)
-    surf = ax1.plot_surface(W_grid, Q_grid, R_grid, cmap='viridis', edgecolor='none', alpha=0.9)
+    # Heatmap with penalty
+    ax1 = fig.add_subplot(1, 2, 1)
+    R_grid = calc_reward(W_grid, Q_grid, 0.3, 0.5, 0.2)
+    c = ax1.contourf(W_grid, Q_grid, R_grid, levels=20, cmap='viridis')
     ax1.set_xlabel('Waiting Time (s)')
     ax1.set_ylabel('Queue Length (cars)')
-    ax1.set_zlabel('Reward')
-    ax1.set_title('Reward Surface (w_W=0.5, w_T=0.3, w_Q=0.2) with Penalty Cliff')
-    fig.colorbar(surf, ax=ax1, shrink=0.5, aspect=5)
+    ax1.set_title('Reward Surface (w_W=0.3, w_T=0.5, w_Q=0.2) with Penalty Cliff')
+    fig.colorbar(c, ax=ax1, shrink=0.5, aspect=5)
     
     # Subplot showing weight shifts (using 2D heatmap at fixed Q=3)
     ax2 = fig.add_subplot(1, 2, 2)
     W_line = np.linspace(0, 327, 200)
-    R1 = calc_reward(W_line, 3.0, 0.5, 0.3, 0.2)
-    R2 = calc_reward(W_line, 3.0, 0.2, 0.3, 0.5)
-    R3 = calc_reward(W_line, 3.0, 0.8, 0.1, 0.1)
+    R1 = calc_reward(W_line, 3.0, 0.3, 0.5, 0.2)
+    R2 = calc_reward(W_line, 3.0, 0.2, 0.3, 0.5) # Kept unchanged but meaning has shifted, we will change it to 0.2, 0.5, 0.3 # Kept unchanged but meaning has shifted, we will change it to 0.2, 0.5, 0.3
+    R3 = calc_reward(W_line, 3.0, 0.6, 0.2, 0.2)
     
-    ax2.plot(W_line, R1, label="Base (w_W=0.5, w_Q=0.2)", lw=2)
-    ax2.plot(W_line, R2, label="Queue-Focused (w_W=0.2, w_Q=0.5)", lw=2, linestyle='--')
-    ax2.plot(W_line, R3, label="Wait-Focused (w_W=0.8, w_Q=0.1)", lw=2, linestyle=':')
+    ax2.plot(W_line, R1, label="Base (w_W=0.3, w_T=0.5, w_Q=0.2)", lw=2)
+    ax2.plot(W_line, R2, label="Queue-Focused (w_W=0.2, w_T=0.3, w_Q=0.5)", lw=2, linestyle='--')
+    ax2.plot(W_line, R3, label="Wait-Focused (w_W=0.6, w_T=0.2, w_Q=0.2)", lw=2, linestyle=':')
     ax2.axvline(100, color='red', linestyle='-', alpha=0.3, label='Starvation Cliff (W=100)')
     
     ax2.set_xlabel('Waiting Time (W) at fixed Q=3')

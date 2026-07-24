@@ -11,7 +11,7 @@ from q_learning_agent import QLearningAgent
 import traci
 
 def main():
-    base_dir = Path(r"C:\VSCODE\CISInternship_Implement")
+    base_dir = Path(r"C:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic")
     os.chdir(base_dir)
 
     # Clean existing logs

@@ -1,0 +1,37 @@
+# Regenerate All Visualizations
+
+The reason the older charts (like `chart1` and `chart2`) weren't updated is because your project was moved/cloned from an older directory (`C:\VSCODE\CISInternship_Implement`), and several Python scripts still have the old directory hardcoded. 
+
+Because of this, the `collected_data/agent_runs/` folder was never generated in your new environment, so the visualization scripts skipped them and left the old outdated PNG files sitting there.
+
+## Proposed Changes
+
+I will perform a full environment cleanup and data regeneration:
+
+### 1. Fix Hardcoded Paths
+I will update the following scripts to reference the current workspace (`c:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic`) instead of the old one:
+- `scripts/extract_agent_datasets.py`
+- `scripts/extract_all_agent_runs.py`
+- `scripts/inventory_scan.py`
+- `scripts/run_curriculum_training.py`
+- `scripts/run_master_evaluation.py`
+
+### 2. Clean Up Old Charts
+I will delete all the outdated `.png` charts from `outputs/visualizations` (the ones generated on July 22nd) to ensure we don't accidentally mix old data with new data.
+
+### 3. Generate Agent Evaluation Data
+I will run `python scripts/extract_all_agent_runs.py`. This script will use your current trained `q_learning_agent` to run simulations against all the baseline traffic scenarios stored in `collected_data`, and save the agent's performance to the missing `collected_data/agent_runs/` directory.
+
+### 4. Regenerate All Visualizations
+Once the agent run data is properly extracted, I will run all the visualization scripts:
+- `visualize_all_comparisons.py`
+- `visualize_all_datasets.py`
+- `visualize_parameter_combinations.py`
+- `visualize_readable_timings.py`
+- `visualize_signal_timings.py`
+
+This will generate a fresh, accurate batch of PNG charts using the correct parameters and the current model's true performance.
+
+## User Review Required
+> [!IMPORTANT]
+> Running the data extraction will launch the SUMO simulator to evaluate the agent across multiple scenarios. This may take a minute or two to complete. Please review and click **Proceed** if you'd like me to execute this full cleanup and regeneration pipeline.

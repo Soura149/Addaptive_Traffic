@@ -100,7 +100,7 @@ def main():
     # =========================================================================
     # Task 3: Direct Reward Parameter Comparison Plot
     # =========================================================================
-    def calc_reward(W, Q, T, w_W=0.5, w_Q=0.2, w_T=0.3, Ps=2.0):
+    def calc_reward(W, Q, T, w_W=0.3, w_Q=0.2, w_T=0.5, Ps=2.0):
         # Normalize wait time
         W_q = np.maximum(0, 1.0 - (W / 327.0))
         # Normalize queue
@@ -119,7 +119,7 @@ def main():
     R_vs_W = calc_reward(W_vals, Q=3, T=0.5)
     axes[0].plot(W_vals, R_vs_W, lw=2, color='darkblue')
     axes[0].axvline(100, color='red', linestyle='--', label='Starvation Threshold (W=100s)')
-    axes[0].set_title("Reward vs Raw Waiting Time (W)\n[w_W=50%]")
+    axes[0].set_title("Reward vs Raw Waiting Time (W)\n[w_W=30%]")
     axes[0].set_xlabel("Waiting Time W (s)")
     axes[0].set_ylabel("Total Reward R")
     axes[0].legend()
