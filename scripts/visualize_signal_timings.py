@@ -6,12 +6,15 @@ from matplotlib.colors import LinearSegmentedColormap
 
 def main():
     # Load the data
-    file_path = "collected_data/agent_runs/metrics_agent_cars_1200total_1000s_unbalanced.csv"
+    file_path = "outputs/decision_log.csv"
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
         return
         
-    df = pd.read_csv(file_path)
+    df_all = pd.read_csv(file_path)
+    last_ep = df_all['episode'].max()
+    df = df_all[df_all['episode'] == last_ep].copy()
+    df.reset_index(drop=True, inplace=True)
     
     os.makedirs("outputs/visualizations", exist_ok=True)
     
@@ -30,31 +33,36 @@ def main():
     decision_steps = []
     
     for i, row in df.iterrows():
-        sim_time = row['Step']
-        we_green = row['WE_Green_Duration']
-        ns_green = row['NS_Green_Duration']
+        # alternating phases
+        action_dur = row['action']
         
-        we_q = row['Queue_West_East']
-        ns_q = row['Queue_North_South']
+        we_q = row['we_queue']
+        ns_q = row['ns_queue']
         
-        # Calculate start and end for WE
-        we_start = prev_time
-        we_end = we_start + we_green
-        
-        # Calculate start and end for NS (accounts for 3s yellow after WE)
-        ns_start = we_end + 3
-        ns_end = ns_start + ns_green
-        
-        we_spans.append((we_start, we_green))
-        ns_spans.append((ns_start, ns_green))
+        if i % 2 == 0:
+            # WE Green
+            we_green = action_dur
+            ns_green = 0
+            
+            we_start = prev_time
+            we_end = we_start + we_green
+            we_spans.append((we_start, we_green))
+            prev_time = we_end + 3 # yellow time
+        else:
+            # NS Green
+            we_green = 0
+            ns_green = action_dur
+            
+            ns_start = prev_time
+            ns_end = ns_start + ns_green
+            ns_spans.append((ns_start, ns_green))
+            prev_time = ns_end + 3
         
         decision_steps.append(i + 1)
         we_durations.append(we_green)
         ns_durations.append(ns_green)
         we_queues.append(we_q)
         ns_queues.append(ns_q)
-        
-        prev_time = sim_time
         
     # -------------------------------------------------------------
     # Plot 1: Clean Zoomed-In High-Resolution Gantt Chart (0-400s)

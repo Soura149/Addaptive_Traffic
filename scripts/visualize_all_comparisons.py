@@ -152,27 +152,27 @@ def main():
     if os.path.exists(dec_file):
         df_dec = pd.read_csv(dec_file)
         if not df_dec.empty:
-            last_ep = df_dec['Episode'].max()
-            df_last = df_dec[df_dec['Episode'] == last_ep].copy()
+            last_ep = df_dec['episode'].max()
+            df_last = df_dec[df_dec['episode'] == last_ep].copy()
             df_last.reset_index(inplace=True)
             
             fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True, dpi=300)
             
-            sns.lineplot(data=df_last, x=df_last.index, y="W_q", ax=axes[0], color='blue', lw=2)
-            axes[0].set_ylabel("W_q (Wait Score)")
+            sns.lineplot(data=df_last, x=df_last.index, y="total_wait", ax=axes[0], color='blue', lw=2)
+            axes[0].set_ylabel("Total Wait Time")
             axes[0].set_title(f"Time-Series Step Dynamics (Episode {last_ep})")
             
-            sns.lineplot(data=df_last, x=df_last.index, y="Q_q", ax=axes[1], color='green', lw=2)
-            axes[1].set_ylabel("Q_q (Queue Score)")
+            sns.lineplot(data=df_last, x=df_last.index, y="total_queue", ax=axes[1], color='green', lw=2)
+            axes[1].set_ylabel("Total Queue Length")
             
-            sns.lineplot(data=df_last, x=df_last.index, y="T_q", ax=axes[2], color='purple', lw=2)
-            axes[2].set_ylabel("T_q (Throughput Rate)")
+            sns.lineplot(data=df_last, x=df_last.index, y="transition_throughput", ax=axes[2], color='purple', lw=2)
+            axes[2].set_ylabel("Throughput Rate")
             
             # Action selections
             # We map strings to categorical numbers for plotting
-            unique_actions = df_last['Action'].unique()
+            unique_actions = df_last['action'].unique()
             act_map = {act: i for i, act in enumerate(unique_actions)}
-            df_last['Action_Idx'] = df_last['Action'].map(act_map)
+            df_last['Action_Idx'] = df_last['action'].map(act_map)
             
             sns.scatterplot(data=df_last, x=df_last.index, y="Action_Idx", ax=axes[3], s=60, color='red')
             axes[3].set_yticks(list(act_map.values()))

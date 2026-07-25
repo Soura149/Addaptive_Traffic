@@ -1,0 +1,8 @@
+<?xml version="1.0" ?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="car" maxSpeed="13.89" length="4.7"/>
+    <route id="route_we" edges="E0 E0.58"/>
+    <route id="route_ns" edges="E1 E2"/>
+    <flow id="flow_we" type="car" route="route_we" begin="0" end="2000" probability="0.51" departLane="0"/>
+    <flow id="flow_ns" type="car" route="route_ns" begin="0" end="2000" probability="0.51" departLane="0"/>
+</routes>

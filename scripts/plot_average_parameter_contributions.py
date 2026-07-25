@@ -83,7 +83,6 @@ def generate_average_parameter_contributions():
     plt.tight_layout()
     output_path = 'outputs/average_effect_reward_parameters.png'
     plt.savefig(output_path)
-    plt.show()
     print(f"✅ Generated parameter contribution chart: {output_path}")
 
 if __name__ == '__main__':

@@ -69,7 +69,6 @@ def generate_reward_progression_facets():
     plt.tight_layout()
     output_path = 'outputs/reward_progression_within_training_volume.png'
     plt.savefig(output_path, bbox_inches='tight')
-    plt.show()
     print(f"✅ Generated faceted reward progression plot: {output_path}")
 
 if __name__ == '__main__':

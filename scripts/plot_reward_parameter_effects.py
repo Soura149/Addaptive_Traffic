@@ -107,7 +107,6 @@ def generate_volume_reward_comparison():
     plt.tight_layout()
     output_path = 'outputs/effect_of_traffic_volume_reward_parameters.png'
     plt.savefig(output_path)
-    plt.show()
     print(f"✅ Generated grouped bar chart: {output_path}")
 
 if __name__ == '__main__':
