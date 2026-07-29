@@ -1,111 +1,105 @@
 import os
 import xml.etree.ElementTree as ET
 
-WORKSPACE_DIR = os.path.join(os.path.dirname(__file__), "..")
-
-SCENARIOS = {
-    "s1_low_200": {"we": 150, "ns": 50},
-    "s2_medium_600": {"we": 450, "ns": 150},
-    "s3_heavy_asym_1200": {"we": 900, "ns": 300},
-    "s4_heavy_sym_1200": {"we": 600, "ns": 600},
-    "s5_peak_1800": {"we": 1200, "ns": 600},
-}
-
-def verify_scenarios():
-    print("--- Scenario Route Verification ---")
-    all_passed = True
-    routes_dir = os.path.join(WORKSPACE_DIR, "sumofiles", "routes")
+def verify_environment():
+    base_dir = r"c:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic"
+    routes_dir = os.path.join(base_dir, "sumofiles", "routes")
+    net_file = os.path.join(base_dir, "sumofiles", "Traci.net.xml")
+    sumocfg_file = os.path.join(base_dir, "src", "Traci.sumocfg")
     
-    print(f"{'Scenario':<20} | {'Expected WE':<12} | {'Actual WE':<10} | {'Expected NS':<12} | {'Actual NS':<10} | {'Status'}")
-    print("-" * 80)
+    vols = [100, 300, 600, 900, 1200]
+    matrix = {}
     
-    for name, expected in SCENARIOS.items():
-        filepath = os.path.join(routes_dir, f"{name}.rou.xml")
-        if not os.path.exists(filepath):
-            print(f"{name:<20} | Missing File!")
-            all_passed = False
-            continue
+    # Check 1: 25 Generated Scenario Route Files
+    print("--- Route Files Verification ---")
+    all_correct = True
+    for we_vol in vols:
+        matrix[we_vol] = {}
+        for ns_vol in vols:
+            filename = f"route_we_{we_vol}_ns_{ns_vol}.rou.xml"
+            filepath = os.path.join(routes_dir, filename)
             
-        tree = ET.parse(filepath)
-        root = tree.getroot()
-        
-        we_count = sum(1 for v in root.findall('vehicle') if v.get('route') == 'route_we')
-        ns_count = sum(1 for v in root.findall('vehicle') if v.get('route') == 'route_ns')
-        
-        status = "PASS" if we_count == expected['we'] and ns_count == expected['ns'] else "FAIL"
-        if status == "FAIL":
-            all_passed = False
+            if not os.path.exists(filepath):
+                matrix[we_vol][ns_vol] = "MISSING"
+                all_correct = False
+                continue
+                
+            tree = ET.parse(filepath)
+            root = tree.getroot()
             
-        print(f"{name:<20} | {expected['we']:<12} | {we_count:<10} | {expected['ns']:<12} | {ns_count:<10} | {status}")
-        
-    return all_passed
-
-def verify_net_file():
-    print("\n--- Network Traffic Light Verification ---")
-    filepath = os.path.join(WORKSPACE_DIR, "sumofiles", "Traci.net.xml")
-    if not os.path.exists(filepath):
-        print("Traci.net.xml is missing!")
-        return False
-        
-    tree = ET.parse(filepath)
+            we_count = sum(1 for v in root.findall('vehicle') if v.get('route') == 'route_we')
+            ns_count = sum(1 for v in root.findall('vehicle') if v.get('route') == 'route_ns')
+            
+            if we_count == we_vol and ns_count == ns_vol:
+                matrix[we_vol][ns_vol] = "OK"
+            else:
+                matrix[we_vol][ns_vol] = f"FAIL (WE:{we_count}, NS:{ns_count})"
+                all_correct = False
+                
+    if all_correct:
+        print("All 25 scenario files verified successfully.")
+    
+    # Check 2: Traffic light phases
+    print("\n--- Traffic Light Phases Verification ---")
+    tree = ET.parse(net_file)
     root = tree.getroot()
-    
-    tl_logic = root.find(".//tlLogic")
-    if tl_logic is None:
-        print("tlLogic element not found in Traci.net.xml")
-        return False
+    tl = root.find(".//tlLogic[@id='J2']")
+    if tl is not None:
+        phases = tl.findall('phase')
+        if len(phases) == 4:
+            print(f"Phase 0: {phases[0].get('state')} (Duration: {phases[0].get('duration')}) - WE Green")
+            print(f"Phase 1: {phases[1].get('state')} (Duration: {phases[1].get('duration')}) - WE Yellow 3s")
+            print(f"Phase 2: {phases[2].get('state')} (Duration: {phases[2].get('duration')}) - NS Green")
+            print(f"Phase 3: {phases[3].get('state')} (Duration: {phases[3].get('duration')}) - NS Yellow 3s")
+            
+            # Check phases explicitly
+            checks = [
+                phases[0].get('state') == 'GGrr',
+                phases[1].get('state') == 'yyrr' and phases[1].get('duration') == '3',
+                phases[2].get('state') == 'rrGG',
+                phases[3].get('state') == 'rryy' and phases[3].get('duration') == '3'
+            ]
+            if all(checks):
+                print("Traffic light phases verified correctly.")
+            else:
+                print("Traffic light phases DO NOT MATCH expected configuration.")
+        else:
+            print("Incorrect number of phases.")
+    else:
+        print("tlLogic J2 not found.")
         
-    phases = tl_logic.findall("phase")
-    if len(phases) < 4:
-        print(f"Expected at least 4 phases, found {len(phases)}")
-        return False
-        
-    p0 = phases[0].get('state') == 'GGrr'
-    p1 = phases[1].get('state') == 'yyrr' and phases[1].get('duration') == '3'
-    p2 = phases[2].get('state') == 'rrGG'
-    p3 = phases[3].get('state') == 'rryy' and phases[3].get('duration') == '3'
-    
-    print(f"Phase 0 (WE Green 'GGrr'): {'PASS' if p0 else 'FAIL'}")
-    print(f"Phase 1 (WE Yellow 3s 'yyrr'): {'PASS' if p1 else 'FAIL'}")
-    print(f"Phase 2 (NS Green 'rrGG'): {'PASS' if p2 else 'FAIL'}")
-    print(f"Phase 3 (NS Yellow 3s 'rryy'): {'PASS' if p3 else 'FAIL'}")
-    
-    return p0 and p1 and p2 and p3
-
-def verify_sumocfg():
-    print("\n--- sumocfg Path Resolution Verification ---")
-    filepath = os.path.join(WORKSPACE_DIR, "src", "Traci.sumocfg")
-    if not os.path.exists(filepath):
-        print("Traci.sumocfg is missing!")
-        return False
-        
-    tree = ET.parse(filepath)
+    # Check 3: Relative config paths
+    print("\n--- Configuration Path Verification ---")
+    tree = ET.parse(sumocfg_file)
     root = tree.getroot()
+    cfg_dir = os.path.dirname(sumocfg_file)
     
-    net_file = root.find(".//net-file")
-    route_files = root.find(".//route-files")
+    input_node = root.find('input')
+    net_val = input_node.find('net-file').get('value')
+    route_val = input_node.find('route-files').get('value')
     
-    net_pass = net_file is not None and net_file.get('value') == '../sumofiles/Traci.net.xml'
-    route_pass = route_files is not None and route_files.get('value') == '../sumofiles/routes/s3_heavy_asym_1200.rou.xml'
+    net_path = os.path.abspath(os.path.join(cfg_dir, net_val))
+    route_path = os.path.abspath(os.path.join(cfg_dir, route_val))
     
-    print(f"net-file path ('../sumofiles/Traci.net.xml'): {'PASS' if net_pass else 'FAIL'}")
-    print(f"route-files path ('../sumofiles/routes/s3_heavy_asym_1200.rou.xml'): {'PASS' if route_pass else 'FAIL'}")
+    print(f"Configured net-file: {net_val}")
+    print(f"Resolved net-file path: {net_path} (Exists: {os.path.exists(net_path)})")
     
-    return net_pass and route_pass
+    print(f"Configured route-files: {route_val}")
+    print(f"Resolved route-files path: {route_path} (Exists: {os.path.exists(route_path)})")
+    
+    if os.path.exists(net_path) and os.path.exists(route_path):
+        print("Path resolution verified correctly.")
+        
+    print("\n--- 5x5 Verification Matrix Table ---")
+    header = "WE/NS" + "".join([f"| {v:<4}" for v in vols])
+    print(header)
+    print("-" * len(header))
+    for we_vol in vols:
+        row = f"{we_vol:<5}"
+        for ns_vol in vols:
+            status = matrix[we_vol][ns_vol]
+            row += f"| {status:<4}"
+        print(row)
 
 if __name__ == "__main__":
-    v1 = verify_scenarios()
-    v2 = verify_net_file()
-    v3 = verify_sumocfg()
-    
-    print("\n=======================================================")
-    print("                STEP 1 COMPLIANCE REPORT               ")
-    print("=======================================================")
-    print(f"Scenario Verification:   {'[OK]' if v1 else '[FAILED]'}")
-    print(f"Traffic Light Audit:     {'[OK]' if v2 else '[FAILED]'}")
-    print(f"sumocfg Path Audit:      {'[OK]' if v3 else '[FAILED]'}")
-    print("=======================================================")
-    if v1 and v2 and v3:
-        print("STATUS: 100% READINESS FOR STEP 2 (Dynamic Min-Max Calibration).")
-    else:
-        print("STATUS: FIX ISSUES BEFORE PROCEEDING.")
+    verify_environment()

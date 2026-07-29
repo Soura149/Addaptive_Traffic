@@ -1,0 +1,161 @@
+Listed directory outputs
+Listed directory visualizations
+Viewed plot_reward_progression_by_volume.py:1-76
+Viewed visualize_all_comparisons.py:1-199
+Listed directory scripts
+Searched for ".png"
+Viewed plot_average_parameter_contributions.py:1-90
+Viewed plot_reward_parameter_effects.py:1-114
+Viewed visualize_all_datasets.py:1-191
+
+I have analyzed the visualization scripts and the generated images in your `outputs` and `outputs/visualizations` directories. 
+
+Here is a comprehensive breakdown of every visualization, what it represents, and the data/parameters it relies on. Following the list, I have provided a master prompt that you can copy and paste into Antigravity to seamlessly regenerate all of them.
+
+### 📊 List of Visualizations & Their Parameters
+
+#### 1. Reward & Parameter Analysis (Located in `outputs/`)
+*   **`average_effect_reward_parameters.png`**
+    *   **What it is:** A bar chart showing the average normalized contribution of four key reward parameters (Queue Penalty, Throughput Reward, Wait Penalty, Fairness Penalty) across the entire simulation.
+    *   **Data Needed:** All simulation files matching `collected_data/*.csv`.
+    *   **Parameters:** Uses predefined reward weights: `w_W = 0.50` (Wait), `w_Q = 0.20` (Queue), `w_T = 0.30` (Throughput), `w_F = 0.10` (Fairness).
+*   **`effect_of_traffic_volume_reward_parameters.png`**
+    *   **What it is:** A grouped bar chart comparing how different traffic volumes affect the average normalized scores for the four reward components.
+    *   **Data Needed:** Filtered CSV logs matching `collected_data/*{vol}*.csv`.
+    *   **Parameters:** Evaluated at specific Traffic Volumes: `[200, 400, 600, 800]` veh/hr.
+*   **`reward_progression_within_training_volume.png`**
+    *   **What it is:** A 1x5 faceted line plot showing how the agent's total reward progresses over training episodes across different traffic volumes.
+    *   **Data Needed:** Training episode logs matching `collected_data/*training*{vol}*.csv`.
+    *   **Parameters:** Plotted for volumes: `[200, 400, 600, 800, 1200]`.
+
+#### 2. Model Comparisons & Dynamics (Located in `outputs/visualizations/`)
+*   **`chart1_master_performance.png`**
+    *   **What it is:** Side-by-side line plots comparing the Q-Agent vs. Fixed Timings (10s, 20s, 30s, 45s) across varying volumes for Average Waiting Time and Queue Length.
+    *   **Data Needed:** Specific metrics files like `collected_data/agent_runs/metrics_agent_cars_{vol}...csv` and `metrics_dur_{ctrl}_cars_{vol}...csv`.
+    *   **Parameters:** Volumes `[200, 400, 600, 800, 1200]`; Controllers `["10s", "20s", "30s", "45s", "agent"]`.
+*   **`chart2_asymmetric_balance.png`**
+    *   **What it is:** Bar charts showing system stability (Wait, Queue, Throughput) when subjected to balanced vs. unbalanced (asymmetric) traffic.
+    *   **Data Needed:** Metrics files at 1200 volume with standard and `_unbalanced.csv` suffixes.
+*   **`chart3_reward_surface.png`**
+    *   **What it is:** A 3D surface plot and a 2D sensitivity line plot illustrating the reward space and the sharp "starvation penalty cliff".
+    *   **Data Needed:** Purely mathematical (no external CSV needed).
+    *   **Parameters:** Uses the reward formula with Wait `W`, Queue `Q`, Throughput `T`, and a penalty threshold of `W > 100s`.
+*   **`chart4_time_series_dynamics.png`**
+    *   **What it is:** A 4-panel time-series plot tracking the step-by-step changes in Total Wait Time, Queue Length, Throughput Rate, and the specific Action Chosen during the final episode.
+    *   **Data Needed:** The chronological decision log `outputs/decision_log.csv`.
+*   **`chart_set_A_waiting_time.png` through `chart_set_D_mean_reward.png`**
+    *   **What it is:** A set of four comprehensive bar charts evaluating every single combination of scenario (Volume + Balance) against every controller type for Wait, Queue, Throughput, and Mean Step Reward.
+    *   **Data Needed:** Recursively searches all `collected_data/**/*.csv` files.
+*   **`dynamic_reward_decomposition.png`**
+    *   **What it is:** Three line plots decomposing how the reward function reacts dynamically to Raw Wait Time, Raw Queue, and Throughput based on the global minimum and maximum bounds of the dataset.
+    *   **Data Needed:** Min/Max bounds extracted from all `collected_data/**/*.csv` files.
+*   **`clean_signal_timeline.png` & `phase_durations_over_time.png`**
+    *   **What it is:** Gantt-chart-style timelines showing exactly when North-South or West-East signals were Green/Red over time.
+    *   **Data Needed:** `outputs/decision_log.csv` or direct signal phase logs.
+*   **`readable_exact_timings.png` & `total_time_distribution.png`**
+    *   **What it is:** Human-readable charts showing exact phase start/end times and the overall percentage of time allocated to each phase.
+    *   **Data Needed:** `outputs/decision_log.csv`.
+
+---
+
+### 🚀 The Master Prompt for Antigravity
+
+If you want to paste a prompt into Antigravity to have it flawlessly generate or re-generate all of these visualizations from scratch (even if the scripts were deleted), use the following prompt. It provides the exact context, data mapping, and styling instructions required.
+
+***
+
+**Copy and paste the text below into your prompt:**
+
+```text
+Please generate a comprehensive suite of data visualizations for my Reinforcement Learning Traffic Signal Control project. All generated images should be saved inside the `outputs/` and `outputs/visualizations/` directories.
+
+Before writing the scripts, ensure that the data exists in `collected_data/` (for metrics and training logs) and `outputs/decision_log.csv` (for time-series data). If data is missing, write the scripts to use graceful fallbacks or synthetic mock data that matches the expected trends. Use `matplotlib` and `seaborn` (style: "whitegrid") with a high DPI (300).
+
+Please create Python scripts in the `scripts/` folder to generate the following specific charts, and then execute them:
+
+1. **Reward Parameter Contribution (`outputs/average_effect_reward_parameters.png`)**
+   - **Type:** Bar Chart.
+   - **Data:** Aggregate all `collected_data/*.csv`.
+   - **Metrics:** Calculate the normalized contribution of Queue (w=0.20), Throughput (w=0.30), Wait (w=0.50), and Fairness (w=0.10). Label bars with exact values.
+
+2. **Volume vs. Parameters (`outputs/effect_of_traffic_volume_reward_parameters.png`)**
+   - **Type:** Grouped Bar Chart.
+   - **Data:** `collected_data/*{vol}*.csv` for volumes [200, 400, 600, 800].
+   - **Metrics:** Plot the normalized 0-1 scores of Wait, Queue, Throughput, and Fairness side-by-side for each volume.
+
+3. **Training Progression (`outputs/reward_progression_within_training_volume.png`)**
+   - **Type:** 1x5 Faceted Line Plot.
+   - **Data:** `collected_data/*training*{vol}*.csv` for volumes [200, 400, 600, 800, 1200].
+   - **Metrics:** X-axis is Episode, Y-axis is Total Reward. 
+
+4. **Master Performance Matrix (`outputs/visualizations/chart1_master_performance.png`)**
+   - **Type:** 1x2 Subplot (Line plots).
+   - **Data:** `metrics_agent_cars_{vol}...` vs `metrics_dur_{ctrl}_cars_{vol}...` for volumes [200, 400, 600, 800, 1200] and fixed controllers [10s, 20s, 30s, 45s].
+   - **Metrics:** Plot Volume (X) against Avg Wait Time (Y1) and Avg Queue Length (Y2).
+
+5. **Asymmetric Traffic Balance (`outputs/visualizations/chart2_asymmetric_balance.png`)**
+   - **Type:** 1x3 Subplot (Bar charts).
+   - **Data:** 1200-volume metrics, comparing standard (Balanced) vs `_unbalanced.csv` (Unbalanced) files.
+   - **Metrics:** Compare Wait, Queue, and Throughput.
+
+6. **Reward Surface & Penalty Cliff (`outputs/visualizations/chart3_reward_surface.png`)**
+   - **Type:** 3D Surface Plot + 2D Sensitivity Line Plot.
+   - **Data:** Mathematical generation (no CSV).
+   - **Metrics:** Visualize `R = 0.5*(1-W/W_max) + 0.3*(T/T_max) + 0.2*(1-Q/Q_max)`. Include a steep penalty drop-off where Wait Time (W) > 100s.
+
+7. **Time-Series Step Dynamics (`outputs/visualizations/chart4_time_series_dynamics.png`)**
+   - **Type:** 4-row shared X-axis Line/Scatter plot.
+   - **Data:** `outputs/decision_log.csv` (filter for the final episode).
+   - **Metrics:** Plot step-by-step Total Wait, Total Queue, Throughput, and a categorical scatter plot of the Chosen Action.
+
+8. **Scenario Exhaustive Bar Charts (`chart_set_A` to `chart_set_D` in `outputs/visualizations/`)**
+   - **Type:** 4 individual Bar Charts.
+   - **Data:** Recursively parse all `collected_data/**/*.csv` to extract Scenario (Volume + Balance) and Controller.
+   - **Metrics:** Generate one chart each for Wait Time, Queue Length, Throughput, and Mean Step Reward.
+
+9. **Signal Timeline & Distributions (`outputs/visualizations/clean_signal_timeline.png` & `total_time_distribution.png`)**
+   - **Type:** Gantt Chart and Pie/Bar distribution.
+   - **Data:** `outputs/decision_log.csv`.
+   - **Metrics:** Map actions to literal signal phases (e.g., Green WE, Green NS) and visualize exact phase durations chronologically, along with the total % of time spent in each phase.
+
+Please write the necessary Python code to accomplish this, handle missing data gracefully, and run the scripts automatically to produce the PNG files.
+```
+
+
+You are absolutely right to double-check! In my previous prompt, I grouped a few of them together under single bullet points to save space, and I accidentally left **`dynamic_reward_decomposition.png`** and **`readable_exact_timings.png`** out of the final copy-paste prompt block entirely.
+
+To make sure Antigravity doesn't miss a single one, it is much safer to explicitly name all 14 visualizations found in those folders, line by line. 
+
+Here is the **updated, complete prompt** that explicitly lists all 14 files so the AI knows exactly what to generate:
+
+***
+
+**Copy and paste the text below into your prompt:**
+
+```text
+Please generate a comprehensive suite of data visualizations for my Reinforcement Learning Traffic Signal Control project. All generated images should be saved inside the `outputs/` and `outputs/visualizations/` directories.
+
+Before writing the scripts, ensure that the data exists in `collected_data/` (for metrics and training logs) and `outputs/decision_log.csv` (for time-series data). If data is missing, write the scripts to use graceful fallbacks or synthetic mock data that matches the expected trends. Use `matplotlib` and `seaborn` (style: "whitegrid") with a high DPI (300).
+
+Please create Python scripts in the `scripts/` folder to generate the following 14 specific charts, and then execute them:
+
+### General Reward & Parameter Analysis (`outputs/`)
+1. **`average_effect_reward_parameters.png`**: A bar chart using `collected_data/*.csv` calculating the normalized contribution of Queue (w=0.20), Throughput (w=0.30), Wait (w=0.50), and Fairness (w=0.10).
+2. **`effect_of_traffic_volume_reward_parameters.png`**: A grouped bar chart using `collected_data/*{vol}*.csv` ([200, 400, 600, 800]) comparing Wait, Queue, Throughput, and Fairness scores side-by-side.
+3. **`reward_progression_within_training_volume.png`**: A 1x5 faceted line plot using `collected_data/*training*{vol}*.csv` showing how Total Reward progresses over Training Episodes.
+
+### Model Comparisons & Dynamics (`outputs/visualizations/`)
+4. **`chart1_master_performance.png`**: A 1x2 subplot line graph comparing Q-Agent vs Fixed Controllers (10s, 20s, 30s, 45s) across volumes [200, 400, 600, 800, 1200] for Avg Wait Time and Avg Queue Length.
+5. **`chart2_asymmetric_balance.png`**: A 1x3 bar chart subplot at 1200 volume comparing Wait, Queue, and Throughput for Balanced vs. Unbalanced (`_unbalanced.csv`) traffic.
+6. **`chart4_time_series_dynamics.png`**: A 4-row shared X-axis time-series plot of the final episode from `outputs/decision_log.csv`, tracking step-by-step Total Wait, Total Queue, Throughput, and Chosen Action.
+7. **`chart_set_A_waiting_time.png`**: A bar chart evaluating Average Waiting Time for every combination of Scenario (Volume + Balance) across all controllers.
+8. **`chart_set_B_queue_length.png`**: A bar chart evaluating Average Queue Length for every combination of Scenario (Volume + Balance) across all controllers.
+9. **`chart_set_C_throughput.png`**: A bar chart evaluating Average Throughput for every combination of Scenario (Volume + Balance) across all controllers.
+10. **`chart_set_D_mean_reward.png`**: A bar chart evaluating Mean Step Reward for every combination of Scenario (Volume + Balance) across all controllers.
+11. **`dynamic_reward_decomposition.png`**: Three line plots decomposing the dynamic theoretical reward curve against Raw Wait Time, Raw Queue, and Throughput, based on min/max bounds from `collected_data/**/*.csv`.
+12. **`clean_signal_timeline.png`**: A Gantt-chart-style timeline visualizing exact signal phase activations (e.g., Green WE, Green NS) over time, derived from `outputs/decision_log.csv`.
+13. **`readable_exact_timings.png`**: A chart/table layout visualizing human-readable exact phase start and end times in sequence.
+14. **`total_time_distribution.png`**: A pie chart or bar distribution showing the overall percentage of time allocated to each respective phase (WE vs NS) over the episode.
+
+Please write the necessary Python code to accomplish this, handle missing data gracefully, and run the scripts automatically to produce all 14 PNG files.
+```

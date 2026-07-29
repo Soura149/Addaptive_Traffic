@@ -1,50 +1,57 @@
 import os
-import sys
-import pandas as pd
-import io
+import csv
+from collections import Counter
 
-WORKSPACE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUTPUT_DIR = os.path.join(WORKSPACE_DIR, "outputs")
+base_dir = r"c:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic"
+decision_log_path = os.path.join(base_dir, "outputs", "decision_log.csv")
+eval_matrix_path = os.path.join(base_dir, "outputs", "evaluation_comparison_matrix.csv")
 
-def main():
-    print("--- STARTING DATA ANALYSIS ---")
+def analyze_results():
+    print("--- Step 6 Analytical Insight Extraction ---")
     
-    # 1. Load Evaluation Matrix
-    eval_path = os.path.join(OUTPUT_DIR, "evaluation_comparison_matrix.csv")
-    if os.path.exists(eval_path):
-        eval_df = pd.read_csv(eval_path)
+    # 1. Action Selection Analysis (Extracting from decision_log)
+    action_counts = {
+        "Heavy WE Asymmetric": Counter(),
+        "Heavy NS Asymmetric": Counter(),
+        "Peak Gridlock": Counter()
+    }
+    
+    if os.path.exists(decision_log_path):
+        with open(decision_log_path, 'r') as f:
+            reader = csv.DictReader(f)
+            # Only analyze late exploitation episodes (e.g. > 80)
+            for row in reader:
+                ep = int(row['episode'])
+                if ep > 80:
+                    scenario = row['scenario']
+                    action = row['action']
+                    if 'we_900_ns_300' in scenario:
+                        action_counts["Heavy WE Asymmetric"][action] += 1
+                    elif 'we_300_ns_900' in scenario:
+                        action_counts["Heavy NS Asymmetric"][action] += 1
+                    elif 'we_1200_ns_1200' in scenario:
+                        action_counts["Peak Gridlock"][action] += 1
+                        
+        print("\n[Policy Asymmetry & Action Selection - Episodes > 80]")
+        for profile, counts in action_counts.items():
+            if counts:
+                most_common = counts.most_common(3)
+                print(f"Profile: {profile}")
+                for act, freq in most_common:
+                    print(f"   Action: {act} -> Frequency: {freq}")
     else:
-        print(f"File not found: {eval_path}")
-        return
+        print("Decision log not found.")
 
-    # 2. Extract Agent logs from mixed decision_log
-    dec_path = os.path.join(OUTPUT_DIR, "decision_log.csv")
-    valid_lines = []
-    headers = "episode,decision_step,scenario,state,action,next_state,we_wait,ns_wait,total_wait,we_queue,ns_queue,total_queue,transition_throughput,reward,q_before,q_after"
-    valid_lines.append(headers)
-    
-    with open(dec_path, 'r') as f:
-        for line in f:
-            if ".rou.xml" in line:
-                valid_lines.append(line.strip())
-                
-    dec_df = pd.read_csv(io.StringIO("\n".join(valid_lines)))
-
-    # Insight 1: Policy Behavior
-    print("\n--- Insight 1: Policy Behavior (Action Distribution by Scenario) ---")
-    action_dist = dec_df.groupby(['scenario', 'action']).size().unstack(fill_value=0)
-    action_dist_pct = action_dist.div(action_dist.sum(axis=1), axis=0) * 100
-    print(action_dist_pct.round(2).to_string())
-
-    # Insight 2: Directional Split (WE vs NS)
-    print("\n--- Insight 2: Directional Split Analysis ---")
-    dir_metrics = dec_df.groupby('scenario')[['we_wait', 'ns_wait', 'we_queue', 'ns_queue']].mean()
-    print(dir_metrics.round(2).to_string())
-    
-    # Insight 3: Starvation Protection Check
-    print("\n--- Insight 3: Starvation Event Check ---")
-    starvation_events = eval_df[eval_df['Policy'] == 'RL_Agent']['Starvations'].sum()
-    print(f"Total RL Agent Starvations Across Scenarios: {starvation_events}")
+    # 2. Waiting Time & Bias Fairness Analysis (Extracting from eval_matrix)
+    print("\n[Waiting Time Minimization & Directional Fairness]")
+    if os.path.exists(eval_matrix_path):
+        with open(eval_matrix_path, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['Model'] == 'RL Agent':
+                    print(f"Scenario: {row['Scenario']:<20} | Avg Wait: {row['Average Wait (s)']:>6}s | Starvation: {row['Starvation Events']}")
+    else:
+        print("Evaluation matrix not found.")
 
 if __name__ == "__main__":
-    main()
+    analyze_results()

@@ -1,56 +1,48 @@
 import os
 import sys
-import random
-import csv
 
-WORKSPACE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.join(WORKSPACE_DIR, "src"))
+base_dir = r"c:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic"
+sys.path.append(base_dir)
 
-from q_learning_agent import QLearningAgent
+from src.q_learning_agent import QLearningAgent
 
-SCENARIOS = [
-    "s1_low_200.rou.xml",
-    "s2_medium_600.rou.xml",
-    "s3_heavy_asym_1200.rou.xml",
-    "s4_heavy_sym_1200.rou.xml",
-    "s5_peak_1800.rou.xml"
-]
-
-def main():
-    print("Initializing Multi-Demand Q-Learning Agent Training...")
+def run_training():
+    print("Initializing Step 4: Multi-Demand Curriculum Q-Learning Agent Training...")
     
-    agent = QLearningAgent(
-        alpha=0.1, 
-        gamma=0.9, 
-        epsilon=1.0, 
-        epsilon_decay=0.95, 
-        min_epsilon=0.05
-    )
+    # Initialize Agent with user-specified hyperparameters
+    agent = QLearningAgent(alpha=0.1, gamma=0.9, epsilon=1.0, epsilon_decay=0.95, min_epsilon=0.05)
     
-    episodes = 50
-    print(f"Training for {episodes} episodes over {len(SCENARIOS)} scenarios.")
+    # Setup the 25 scenario files in a systematic cycle
+    vols = [100, 300, 600, 900, 1200]
+    scenarios = []
+    for we_vol in vols:
+        for ns_vol in vols:
+            filename = f"route_we_{we_vol}_ns_{ns_vol}.rou.xml"
+            scenarios.append(filename)
+            
+    total_episodes = 500
     
-    for ep in range(1, episodes + 1):
-        # Systematically rotate or randomly select
-        scenario = random.choice(SCENARIOS)
-        route_path = os.path.join(WORKSPACE_DIR, "sumofiles", "routes", scenario)
+    for episode in range(1, total_episodes + 1):
+        # Systematically cycle through the 25 scenarios
+        scenario_idx = (episode - 1) % len(scenarios)
+        scenario_filename = scenarios[scenario_idx]
+        route_path = os.path.join(base_dir, "sumofiles", "routes", scenario_filename)
         
-        print(f"Episode {ep}/{episodes} | Scenario: {scenario} | Epsilon: {agent.epsilon:.3f}")
+        # Run episode in headless mode
+        total_reward = agent.run_training_episode(episode, scenario_filename, route_path, use_gui=False)
         
-        total_reward = agent.run_training_episode(
-            episode=ep,
-            scenario_name=scenario,
-            route_path=route_path,
-            use_gui=False
-        )
+        # Log to console periodically or every episode to show progress
+        print(f"Episode {episode:03d}/500 | Scenario: {scenario_filename:<25} | Reward: {total_reward:7.2f} | Epsilon: {agent.epsilon:.4f}")
         
-        print(f"  -> Episode {ep} completed. Total Reward: {total_reward:.2f}")
-
-    # Save Q-table at the end
+    # Save Final Q-Table
     agent.save_q_table()
-    print(f"Training complete. Q-Table saved to {agent.q_table_path}")
-    print(f"Decision Log saved to {agent.decision_log_path}")
-    print(f"Summary Log saved to {agent.summary_log_path}")
+    
+    # Report generation
+    print("\nTraining completed successfully.")
+    print("Files updated:")
+    print(" - outputs/decision_log.csv")
+    print(" - outputs/training_summary.csv")
+    print(" - outputs/q_table.json")
 
 if __name__ == "__main__":
-    main()
+    run_training()

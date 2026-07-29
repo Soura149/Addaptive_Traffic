@@ -12,163 +12,118 @@ else:
 import traci
 from sumolib import checkBinary
 
-WORKSPACE_DIR = os.path.join(os.path.dirname(__file__), "..")
-
-SCENARIOS = [
-    "s1_low_200.rou.xml",
-    "s2_medium_600.rou.xml",
-    "s3_heavy_asym_1200.rou.xml",
-    "s4_heavy_sym_1200.rou.xml",
-    "s5_peak_1800.rou.xml"
-]
-
-ACTIONS = [10, 20, 30, 45, "random"]
-
-def run_simulation(route_file, action_policy):
-    net_file = os.path.join(WORKSPACE_DIR, "sumofiles", "Traci.net.xml")
-    route_path = os.path.join(WORKSPACE_DIR, "sumofiles", "routes", route_file)
-    sumo_cmd = [
-        checkBinary('sumo'), 
-        "-n", net_file, 
-        "-r", route_path, 
-        "--no-step-log", "true", 
-        "--no-warnings", "true",
-        "--time-to-teleport", "-1" # Prevent teleports if possible, or leave default
-    ]
+def run_calibration():
+    base_dir = r"c:\VSCODE\cis_internshipmodel2.0\Addaptive_Traffic"
+    routes_dir = os.path.join(base_dir, "sumofiles", "routes")
+    net_file = os.path.join(base_dir, "sumofiles", "Traci.net.xml")
     
-    traci.start(sumo_cmd)
+    vols = [100, 300, 600, 900, 1200]
+    timings = [10, 20, 30, 45]
     
-    W_min, W_max = float('inf'), 0
-    Q_min, Q_max = float('inf'), 0
-    T_min, T_max = float('inf'), 0
+    # Initialize global min/max
+    W_min, W_max = float('inf'), float('-inf')
+    Q_min, Q_max = float('inf'), float('-inf')
+    T_min, T_max = float('inf'), float('-inf')
     
-    edges = ["E0", "E1"]
-    current_phase = 0 # 0: WE Green, 2: NS Green
+    sumoBinary = checkBinary('sumo')
     
-    while traci.simulation.getMinExpectedNumber() > 0:
-        if action_policy == "random":
-            duration = random.choice([10, 20, 30, 45])
-        else:
-            duration = action_policy
+    print("Starting Step 2 Global Calibration...")
+    
+    for we_vol in vols:
+        for ns_vol in vols:
+            route_file = os.path.join(routes_dir, f"route_we_{we_vol}_ns_{ns_vol}.rou.xml")
             
-        traci.trafficlight.setPhase("J2", current_phase)
-        
-        arrived = 0
-        for _ in range(duration):
-            traci.simulationStep()
-            arrived += traci.simulation.getArrivedNumber()
-            if traci.simulation.getMinExpectedNumber() == 0:
-                break
+            # Start SUMO headless
+            cmd = [
+                sumoBinary,
+                "-n", net_file,
+                "-r", route_file,
+                "--no-step-log", "true",
+                "--time-to-teleport", "-1",
+                "--no-warnings", "true"
+            ]
+            traci.start(cmd)
+            
+            step = 0
+            while traci.simulation.getMinExpectedNumber() > 0:
+                phase = random.choice([0, 2]) # 0 is WE Green, 2 is NS Green
+                duration = random.choice(timings)
                 
-        # Record state at the end of green phase
-        q = sum(traci.edge.getLastStepHaltingNumber(e) for e in edges)
-        w = sum(traci.edge.getWaitingTime(e) for e in edges)
-        t_rate = arrived / duration
-        
-        W_min = min(W_min, w)
-        W_max = max(W_max, w)
-        Q_min = min(Q_min, q)
-        Q_max = max(Q_max, q)
-        T_min = min(T_min, t_rate)
-        T_max = max(T_max, t_rate)
-        
-        if traci.simulation.getMinExpectedNumber() == 0:
-            break
-            
-        # Yellow phase
-        traci.trafficlight.setPhase("J2", current_phase + 1)
-        for _ in range(3):
-            traci.simulationStep()
-            if traci.simulation.getMinExpectedNumber() == 0:
-                break
+                current_phase = traci.trafficlight.getPhase("J2")
                 
-        current_phase = 2 if current_phase == 0 else 0
-        
-    traci.close()
-    
-    return W_min, W_max, Q_min, Q_max, T_min, T_max
+                # Yellow transition if switching phases
+                if current_phase != phase and current_phase in [0, 2]:
+                    yellow_phase = 1 if current_phase == 0 else 3
+                    traci.trafficlight.setPhase("J2", yellow_phase)
+                    for _ in range(3):
+                        traci.simulationStep()
+                        step += 1
+                        if traci.simulation.getMinExpectedNumber() == 0:
+                            break
+                            
+                if traci.simulation.getMinExpectedNumber() == 0:
+                    break
+                    
+                traci.trafficlight.setPhase("J2", phase)
+                
+                actual_duration = 0
+                completed_vehicles = 0
+                
+                for _ in range(duration):
+                    traci.simulationStep()
+                    completed_vehicles += traci.simulation.getArrivedNumber()
+                    step += 1
+                    actual_duration += 1
+                    if traci.simulation.getMinExpectedNumber() == 0:
+                        break
+                
+                # Calculate metrics at the end of the action
+                if actual_duration > 0:
+                    T = completed_vehicles / actual_duration
+                else:
+                    T = 0
+                
+                W = traci.edge.getWaitingTime("E0") + traci.edge.getWaitingTime("E1")
+                Q = traci.edge.getLastStepHaltingNumber("E0") + traci.edge.getLastStepHaltingNumber("E1")
+                
+                if W < W_min: W_min = W
+                if W > W_max: W_max = W
+                
+                if Q < Q_min: Q_min = Q
+                if Q > Q_max: Q_max = Q
+                
+                if T < T_min: T_min = T
+                if T > T_max: T_max = T
 
-def main():
-    print("Starting Global Dynamic Calibration (Headless)...")
-    
-    global_W_min, global_W_max = float('inf'), 0
-    global_Q_min, global_Q_max = float('inf'), 0
-    global_T_min, global_T_max = float('inf'), 0
-    
-    scenario_bounds = {}
-    
-    for scenario in SCENARIOS:
-        print(f"\nEvaluating Scenario: {scenario}")
-        s_W_min, s_W_max = float('inf'), 0
-        s_Q_min, s_Q_max = float('inf'), 0
-        s_T_min, s_T_max = float('inf'), 0
-        
-        for action in ACTIONS:
-            print(f"  -> Running Policy: {action}")
-            W_min, W_max, Q_min, Q_max, T_min, T_max = run_simulation(scenario, action)
+            traci.close()
             
-            s_W_min = min(s_W_min, W_min)
-            s_W_max = max(s_W_max, W_max)
-            s_Q_min = min(s_Q_min, Q_min)
-            s_Q_max = max(s_Q_max, Q_max)
-            s_T_min = min(s_T_min, T_min)
-            s_T_max = max(s_T_max, T_max)
-            
-        scenario_bounds[scenario] = {
-            "W_min": round(s_W_min, 2), "W_max": round(s_W_max, 2),
-            "Q_min": round(s_Q_min, 2), "Q_max": round(s_Q_max, 2),
-            "T_min": round(s_T_min, 4), "T_max": round(s_T_max, 4)
-        }
-        
-        print(f"  [Bounds] W: {s_W_min:.1f}-{s_W_max:.1f}, Q: {s_Q_min}-{s_Q_max}, T: {s_T_min:.3f}-{s_T_max:.3f}")
-        
-        global_W_min = min(global_W_min, s_W_min)
-        global_W_max = max(global_W_max, s_W_max)
-        global_Q_min = min(global_Q_min, s_Q_min)
-        global_Q_max = max(global_Q_max, s_Q_max)
-        global_T_min = min(global_T_min, s_T_min)
-        global_T_max = max(global_T_max, s_T_max)
-
-    # Safegaurds: if max == min, slightly inflate max to avoid zero-denominator during normalization later.
-    if global_W_max == global_W_min: global_W_max += 1.0
-    if global_Q_max == global_Q_min: global_Q_max += 1.0
-    if global_T_max == global_T_min: global_T_max += 0.1
-
-    final_bounds = {
-        "W_min": round(global_W_min, 2),
-        "W_max": round(global_W_max, 2),
-        "Q_min": round(global_Q_min, 2),
-        "Q_max": round(global_Q_max, 2),
-        "T_min": round(global_T_min, 4),
-        "T_max": round(global_T_max, 4)
+    # Safeguard & Zero-Denominator Protection
+    if W_min == W_max: W_max = W_min + 1.0
+    if Q_min == Q_max: Q_max = Q_min + 1.0
+    if T_min == T_max: T_max = T_min + 1.0
+    
+    # Enforce human-tolerance caps on the dynamic bounds
+    W_max = min(W_max, 150.0) # Cap wait time penalty scaling at 2.5 mins
+    Q_max = max(Q_max, 30.0)  # Ensure queue penalty scaling isn't overly sensitive
+    
+    bounds = {
+        "W_min": W_min,
+        "W_max": W_max,
+        "Q_min": Q_min,
+        "Q_max": Q_max,
+        "T_min": T_min,
+        "T_max": T_max
     }
     
-    out_dir = os.path.join(WORKSPACE_DIR, "src")
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, "calibration_bounds.json")
-    
-    with open(out_path, "w") as f:
-        json.dump(final_bounds, f, indent=4)
+    out_file = os.path.join(base_dir, "src", "calibration_bounds.json")
+    with open(out_file, 'w') as f:
+        json.dump(bounds, f, indent=4)
         
-    print("\n=========================================================================")
-    print("                     STEP 2: CALIBRATION SUMMARY TABLE                   ")
-    print("=========================================================================")
-    print(f"{'Scenario':<25} | {'W (sec)':<15} | {'Q (veh)':<12} | {'T (veh/s)'}")
-    print("-" * 73)
-    for sc, b in scenario_bounds.items():
-        w_str = f"{b['W_min']}-{b['W_max']}"
-        q_str = f"{b['Q_min']}-{b['Q_max']}"
-        t_str = f"{b['T_min']:.2f}-{b['T_max']:.2f}"
-        print(f"{sc:<25} | {w_str:<15} | {q_str:<12} | {t_str}")
-    print("=========================================================================")
-    print("                          GLOBAL EXTREMA (SAVED)                         ")
-    print("=========================================================================")
-    print(f"Waiting Time W:  {final_bounds['W_min']} to {final_bounds['W_max']} seconds")
-    print(f"Queue Length Q:  {final_bounds['Q_min']} to {final_bounds['Q_max']} vehicles")
-    print(f"Throughput T:    {final_bounds['T_min']} to {final_bounds['T_max']} veh/s")
-    print(f"-> Saved to {out_path}")
-    print("=========================================================================")
-    print("STATUS: 100% READINESS FOR STEP 3 (Agent Refactoring).")
+    print("\n--- Global Extrema Summary ---")
+    print(f"Waiting Time (W): Min = {W_min:.2f} s, Max = {W_max:.2f} s")
+    print(f"Queue Length (Q): Min = {Q_min:.2f} veh, Max = {Q_max:.2f} veh")
+    print(f"Throughput Rate (T): Min = {T_min:.4f} veh/s, Max = {T_max:.4f} veh/s")
+    print(f"\nSaved calibration bounds to {out_file}")
 
 if __name__ == "__main__":
-    main()
+    run_calibration()

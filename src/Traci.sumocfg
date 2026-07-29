@@ -6,8 +6,8 @@
 <sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
 
     <input>
-        <net-file value="Traci.net.xml"/>
-        <route-files value="Traci.rou.xml"/>
+        <net-file value="../sumofiles/Traci.net.xml"/>
+        <route-files value="../sumofiles/routes/route_we_600_ns_600.rou.xml"/>
     </input>
 
 </sumoConfiguration>
